@@ -1,0 +1,13 @@
+[package]
+name = "quire-neovim-ui-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2" }
+
+[dependencies]
+rmpv = "1"
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2" }
