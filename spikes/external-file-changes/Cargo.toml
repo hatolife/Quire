@@ -1,0 +1,10 @@
+[package]
+name = "quire-external-file-changes-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+notify = "8.2"
+tempfile = "3"
