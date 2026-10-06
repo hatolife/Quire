@@ -63,3 +63,16 @@ child WebView生成はTauriのunstable APIに依存する。
   - https://v2.tauri.app/reference/javascript/api/namespacewebview/
 - Tauri core permissions
   - https://v2.tauri.app/reference/acl/core-permissions/
+
+## 実機確認 2026-10-06
+
+Windows実機でproduction executableを起動し、次を確認した。
+
+- localhost依存なく起動した。
+- 左側のQuire UI WebViewと右側のchild WebViewが同一Window内に表示された。
+- child WebViewで `https://example.com` を表示できた。
+- Browser paneの初期bounds同期が成立した。
+
+初期表示は成立した。
+
+pane比率変更、focus、hide/show、Window resize、DPI scaling、keyboard shortcut競合、複数Browser paneは引き続き確認する。
