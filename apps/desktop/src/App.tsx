@@ -695,14 +695,13 @@ function App() {
 								<button class="pane-action danger" title="削除" disabled={dirty()} onClick={() => void deleteCurrentDocument()}>削除</button>
 							</Show>
 						</div>
-						<Show
-							when={document() ? document()!.relativePath + "::" + editorSession() : null}
-							keyed
+						<For
+							each={document() ? [{ relativePath: document()!.relativePath, session: editorSession() }] : []}
 							fallback={<div class="empty-pane">左からMarkdownを選択してください。</div>}
 						>
-							{() => (
+							{item => (
 								<NeovimEditor
-									relativePath={document()!.relativePath}
+									relativePath={item.relativePath}
 									initialLine={initialEditorLine()}
 									onTextChange={setDraft}
 									onViewportLineChange={handleEditorViewportLine}
@@ -710,7 +709,7 @@ function App() {
 									onSave={() => void saveDocument()}
 								/>
 							)}
-						</Show>
+						</For>
 					</section>
 					<div
 						class="pane-splitter"
