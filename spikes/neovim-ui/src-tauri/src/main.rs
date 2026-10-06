@@ -93,7 +93,7 @@ fn map_value<'a>(map: &'a [(Value, Value)], key: &str) -> Option<&'a Value> {
 }
 
 fn parse_highlight(value: &Value) -> Highlight {
-	let map = value.as_map().map(Vec::as_slice).unwrap_or(&[]);
+	let map = value.as_map().map(|map| map.as_slice()).unwrap_or(&[]);
 	Highlight {
 		foreground: map_value(map, "foreground").and_then(value_i64),
 		background: map_value(map, "background").and_then(value_i64),

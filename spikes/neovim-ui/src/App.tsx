@@ -89,8 +89,10 @@ function App() {
 		const height = Math.max(1, Math.floor(rect.height));
 		canvas.style.width = `${width}px`;
 		canvas.style.height = `${height}px`;
-		canvas.width = Math.max(1, Math.floor(width * dpr));
-		canvas.height = Math.max(1, Math.floor(height * dpr));
+		const pixelWidth = Math.max(1, Math.floor(width * dpr));
+		const pixelHeight = Math.max(1, Math.floor(height * dpr));
+		if(canvas.width !== pixelWidth){ canvas.width = pixelWidth; }
+		if(canvas.height !== pixelHeight){ canvas.height = pixelHeight; }
 		const ctx = canvas.getContext("2d");
 		if(!ctx){ return; }
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
