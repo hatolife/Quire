@@ -11,7 +11,8 @@ fn main() {
 	tauri::Builder::default()
 		.setup(|app| {
 			let app_data = app.path().app_local_data_dir()?;
-			let extension_dir = app_data.join("extension");
+			let extensions_root = app_data.join("extensions");
+			let extension_dir = extensions_root.join("quire-spike");
 			let profile_dir = app_data.join("webview2-profile");
 			fs::create_dir_all(&extension_dir)?;
 			fs::create_dir_all(&profile_dir)?;
@@ -27,7 +28,7 @@ fn main() {
 			.title("Quire WebView2 Extensions Spike")
 			.inner_size(1100.0, 760.0)
 			.browser_extensions_enabled(true)
-			.extensions_path(extension_dir)
+			.extensions_path(extensions_root)
 			.data_directory(profile_dir)
 			.devtools(true)
 			.build()?;
