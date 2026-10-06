@@ -109,6 +109,7 @@ export default function NeovimEditor(props: Props) {
 	let defaultSpecial = 0xffffff;
 	let bufferLines: string[] = [];
 	let viewportRequestPending = false;
+	let active = true;
 	const highlights = new Map<number, Highlight>();
 	const [mode, setMode] = createSignal("unknown");
 	const [preeditText, setPreeditText] = createSignal("");
@@ -501,6 +502,7 @@ export default function NeovimEditor(props: Props) {
 		ensureCanvasSize();
 		const stream = new Channel<StreamMessage>();
 		stream.onmessage = message => {
+			if(!active){ return; }
 			if(message.kind === "redraw"){
 				for(const event of message.events){ applyEvent(event); }
 				props.onStatus("Neovim connected / mode: " + mode());
@@ -536,6 +538,7 @@ export default function NeovimEditor(props: Props) {
 	});
 
 	onCleanup(() => {
+		active = false;
 		resizeObserver?.disconnect();
 		void invoke("editor_stop");
 	});
