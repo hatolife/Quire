@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
-import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import NeovimEditor from "./editor/NeovimEditor";
 import {
 	assetRead,
@@ -70,6 +71,7 @@ function App() {
 	let previewElement!: HTMLElement;
 	let suppressEditorViewport = false;
 	let suppressPreviewScroll = false;
+	let closeUnlisten: (() => void) | undefined;
 	const assetCache = new Map<string, Promise<string>>();
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
@@ -186,6 +188,21 @@ function App() {
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
 			})
 			.catch(error => updateStatus("Settings load error: " + String(error), "error", "settings"));
+
+		void getCurrentWindow().onCloseRequested(event => {
+			if(!dirty()){ return; }
+			if(!window.confirm("未保存の変更があります。破棄してQuireを終了しますか？")){
+				event.preventDefault();
+			}
+		}).then(unlisten => {
+			closeUnlisten = unlisten;
+		}).catch(error => {
+			updateStatus("Window close handler error: " + String(error), "error", "window");
+		});
+	});
+
+	onCleanup(() => {
+		closeUnlisten?.();
 	});
 
 	const previewAnchors = () => {
@@ -287,6 +304,7 @@ function App() {
 	};
 
 	const chooseWorkspace = async () => {
+		if(dirty() && !window.confirm("未保存の変更があります。破棄して別のWorkspaceを開きますか？")){ return; }
 		const selected = await open({
 			directory: true,
 			multiple: false,
