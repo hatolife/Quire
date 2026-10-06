@@ -16,7 +16,9 @@ jobs:
 
       - name: Install Neovim
         shell: powershell
-        run: choco install neovim -y --no-progress
+        run: |
+          choco install neovim -y --no-progress
+          "C:\tools\neovim\nvim-win64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Show Neovim version
         shell: powershell
