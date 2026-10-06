@@ -69,9 +69,9 @@ Quireの最初の完成条件は「Markdownを表示できた」ではない。
 
 |Spike|自動検証|Windows build|実機UX確認|現状|
 |---|---|---|---|---|
-|Neovim Embed|成功|成功|一部未確認|RPC / ext_linegrid / UTF-8入力の基礎成立。Neovim UI SpikeでGUI検証を継続する。|
-|Multi WebView Layout|対象外|成功|未確認|同一Window内child WebView方式を実装。resize / focus / DPI / 複数pane等の実機確認待ち。|
-|WebView2 Extensions|対象外|成功|未確認|Manifest V3 extension読込構成を実装。content script / service worker / storageの実機確認待ち。|
+|Neovim Embed|成功|成功|一部未確認|ASCII / Normal mode / mouse / resize / IME確定入力は実機で成立。IME preedit表示を追加し再確認待ち。|
+|Multi WebView Layout|対象外|成功|合格|同一Window内child WebView、pane resize、focus、hide/show、Window resize、通常Web操作を実機確認済み。|
+|WebView2 Extensions|対象外|成功|主要目的合格|Manifest V3 unpacked extensionとcontent script注入を実機確認済み。service worker / storage等の詳細互換は継続確認する。|
 |Git Snapshot Isolation|成功|成功|不要|一時index + Quire専用ref方式でHEAD / branch / user index / staged状態を保持できることを自動確認済み。|
 |External File Changes|成功|成功|追加確認あり|create / modify / rename / move / delete / bulk変更 / Git checkout / dirty conflictをWindows CIで自動確認済み。|
 
@@ -83,7 +83,9 @@ e56770fa550957de720e3e8fb412e282a4b81214
 
 この時点ではMilestone 1完了とはしない。
 
-Neovim UI、Multi WebView、WebView2 Extensionsは、Windows実機で日常操作上の成立性を確認してから採用判断する。
+Multi WebViewとWebView2 Extensionsは主要な成立性をWindows実機で確認済みである。
+
+Neovim UIはIME確定入力まで成立しており、preedit表示の再確認後にSpike 1の採用判断を進める。
 
 ### 目的
 
