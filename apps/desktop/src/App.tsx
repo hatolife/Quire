@@ -108,6 +108,7 @@ function App() {
 	let closeUnlisten: (() => void) | undefined;
 	let reconcileTimer: number | undefined;
 	let searchTimer: number | undefined;
+	let settingsTimer: number | undefined;
 	let watchGeneration = 0;
 	const assetCache = new Map<string, Promise<string>>();
 
@@ -128,6 +129,7 @@ function App() {
 	const [searching, setSearching] = createSignal(false);
 	const [initialEditorLine, setInitialEditorLine] = createSignal<number | undefined>();
 	const [backlinks, setBacklinks] = createSignal<Backlink[]>([]);
+	const [settingsReady, setSettingsReady] = createSignal(false);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
@@ -215,6 +217,15 @@ function App() {
 	});
 
 	createEffect(() => {
+		if(!settingsReady()){ return; }
+		explorerWidth();
+		editorRatio();
+		workspace()?.root;
+		document()?.relativePath;
+		scheduleSettingsSave();
+	});
+
+	createEffect(() => {
 		const query = searchQuery().trim();
 		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
 		if(!query || !workspace()){
@@ -234,24 +245,72 @@ function App() {
 		}, 150);
 	});
 
-	const persistLayout = async () => {
+	const currentSettings = (): DesktopSettings => ({
+		explorerWidth: explorerWidth(),
+		editorRatio: editorRatio(),
+		lastWorkspace: workspace()?.root ?? null,
+		lastDocument: document()?.relativePath ?? null,
+	});
+
+	const persistSettings = async () => {
+		if(!settingsReady()){ return; }
 		try{
-			await settingsSave({
-				explorerWidth: explorerWidth(),
-				editorRatio: editorRatio(),
-			} satisfies DesktopSettings);
+			await settingsSave(currentSettings());
 		}catch(error){
 			updateStatus("Settings save error: " + String(error), "error", "settings");
 		}
 	};
 
+	const scheduleSettingsSave = () => {
+		if(!settingsReady()){ return; }
+		if(settingsTimer !== undefined){ window.clearTimeout(settingsTimer); }
+		settingsTimer = window.setTimeout(() => {
+			settingsTimer = undefined;
+			void persistSettings();
+		}, 200);
+	};
+
 	onMount(() => {
 		void settingsLoad()
-			.then(settings => {
+			.then(async settings => {
 				setExplorerWidth(Math.max(180, Math.min(420, settings.explorerWidth)));
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
+				if(settings.lastWorkspace){
+					try{
+						const opened = await workspaceOpen(settings.lastWorkspace);
+						setWorkspace(opened.info);
+						setEntries(opened.entries);
+						assetCache.clear();
+						setExternalConflict(false);
+						void startWorkspaceWatcher();
+						if(settings.lastDocument){
+							try{
+								const restored = await documentOpen(settings.lastDocument);
+								setDocument(restored);
+								setDraft(contentForEditor(restored.content));
+								setInitialEditorLine(undefined);
+								void refreshBacklinks(restored.relativePath);
+								updateStatus("Session restored: " + restored.relativePath, "info", "session");
+							}catch(error){
+								setDocument(null);
+								setDraft("");
+								updateStatus("Last Document could not be restored: " + String(error), "warn", "session");
+							}
+						}else{
+							updateStatus("Workspace restored: " + opened.info.name, "info", "session");
+						}
+					}catch(error){
+						setWorkspace(null);
+						setEntries([]);
+						updateStatus("Last Workspace could not be restored: " + String(error), "warn", "session");
+					}
+				}
+				setSettingsReady(true);
 			})
-			.catch(error => updateStatus("Settings load error: " + String(error), "error", "settings"));
+			.catch(error => {
+				setSettingsReady(true);
+				updateStatus("Settings load error: " + String(error), "error", "settings");
+			});
 
 		void getCurrentWindow().onCloseRequested(event => {
 			if(!dirty()){ return; }
@@ -270,6 +329,7 @@ function App() {
 		++watchGeneration;
 		if(reconcileTimer !== undefined){ window.clearTimeout(reconcileTimer); }
 		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
+		if(settingsTimer !== undefined){ window.clearTimeout(settingsTimer); }
 		void workspaceWatchStop();
 	});
 
@@ -345,7 +405,7 @@ function App() {
 		const handleUp = () => {
 			window.removeEventListener("pointermove", handleMove);
 			window.removeEventListener("pointerup", handleUp);
-			void persistLayout();
+			scheduleSettingsSave();
 		};
 		window.addEventListener("pointermove", handleMove);
 		window.addEventListener("pointerup", handleUp, { once: true });
@@ -365,7 +425,7 @@ function App() {
 		const handleUp = () => {
 			window.removeEventListener("pointermove", handleMove);
 			window.removeEventListener("pointerup", handleUp);
-			void persistLayout();
+			scheduleSettingsSave();
 		};
 		window.addEventListener("pointermove", handleMove);
 		window.addEventListener("pointerup", handleUp, { once: true });

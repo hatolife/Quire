@@ -8,6 +8,8 @@ use tauri::Manager;
 pub struct DesktopSettings {
 	pub explorer_width: f64,
 	pub editor_ratio: f64,
+	pub last_workspace: Option<String>,
+	pub last_document: Option<String>,
 }
 
 impl Default for DesktopSettings {
@@ -15,6 +17,8 @@ impl Default for DesktopSettings {
 		Self {
 			explorer_width: 260.0,
 			editor_ratio: 0.5,
+			last_workspace: None,
+			last_document: None,
 		}
 	}
 }

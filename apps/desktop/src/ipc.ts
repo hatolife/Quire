@@ -42,6 +42,8 @@ export type Backlink = {
 export type DesktopSettings = {
 	explorerWidth: number;
 	editorRatio: number;
+	lastWorkspace?: string | null;
+	lastDocument?: string | null;
 };
 
 export type LogEntry = {
