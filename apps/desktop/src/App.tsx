@@ -64,10 +64,11 @@ function App() {
 	};
 
 	const previewAnchors = () => {
+		const previewRect = previewElement.getBoundingClientRect();
 		return Array.from(previewElement.querySelectorAll<HTMLElement>("[data-source-line]"))
 			.map(element => ({
 				line: Number.parseInt(element.dataset.sourceLine ?? "0", 10),
-				top: element.offsetTop,
+				top: element.getBoundingClientRect().top - previewRect.top + previewElement.scrollTop,
 			}))
 			.filter(anchor => Number.isFinite(anchor.line))
 			.sort((left, right) => left.line - right.line);
