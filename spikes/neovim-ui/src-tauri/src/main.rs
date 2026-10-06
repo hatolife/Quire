@@ -311,6 +311,20 @@ fn editor_resize(width: u64, height: u64, state: tauri::State<'_, EditorState>) 
 }
 
 #[tauri::command]
+fn editor_mouse(button: String, action: String, modifier: String, row: u64, col: u64, state: tauri::State<'_, EditorState>) -> Result<(), String> {
+	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
+	let process = slot.as_mut().ok_or_else(|| "Editor is not running.".to_string())?;
+	process.send_request("nvim_input_mouse", vec![
+		Value::from(button),
+		Value::from(action),
+		Value::from(modifier),
+		Value::from(0),
+		Value::from(row),
+		Value::from(col),
+	])
+}
+
+#[tauri::command]
 fn stop_editor(state: tauri::State<'_, EditorState>) -> Result<(), String> {
 	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
 	if let Some(mut process) = slot.take() {
@@ -322,7 +336,7 @@ fn stop_editor(state: tauri::State<'_, EditorState>) -> Result<(), String> {
 fn main() {
 	tauri::Builder::default()
 		.manage(EditorState::default())
-		.invoke_handler(tauri::generate_handler![start_editor, editor_input, editor_resize, stop_editor])
+		.invoke_handler(tauri::generate_handler![start_editor, editor_input, editor_resize, editor_mouse, stop_editor])
 		.run(tauri::generate_context!())
 		.expect("failed to run Quire Neovim UI spike");
 }
