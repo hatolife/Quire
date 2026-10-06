@@ -61,6 +61,7 @@ type Grid = {
 type Props = {
 	relativePath: string;
 	onTextChange: (text: string) => void;
+	onViewportLineChange: (line: number) => void;
 	onStatus: (status: string) => void;
 	onSave: () => void;
 };
@@ -107,6 +108,7 @@ export default function NeovimEditor(props: Props) {
 	let defaultBackground = 0x000000;
 	let defaultSpecial = 0xffffff;
 	let bufferLines: string[] = [];
+	let viewportRequestPending = false;
 	const highlights = new Map<number, Highlight>();
 	const [mode, setMode] = createSignal("unknown");
 	const [preeditText, setPreeditText] = createSignal("");
@@ -320,6 +322,21 @@ export default function NeovimEditor(props: Props) {
 		positionInput();
 	};
 
+	const requestViewportLine = () => {
+		if(viewportRequestPending){ return; }
+		viewportRequestPending = true;
+		requestAnimationFrame(async () => {
+			try{
+				const line = await invoke<number>("editor_get_top_line");
+				props.onViewportLineChange(line);
+			}catch(error){
+				props.onStatus("Editor viewport error: " + String(error));
+			}finally{
+				viewportRequestPending = false;
+			}
+		});
+	};
+
 	const applyScroll = (event: Extract<UiEvent, { type: "grid_scroll" }>) => {
 		if(event.grid !== 1){ return; }
 		const before = grid.cells.map(row => row.map(cell => ({ ...cell })));
@@ -334,6 +351,7 @@ export default function NeovimEditor(props: Props) {
 				}
 			}
 		}
+		requestViewportLine();
 	};
 
 	const applyEvent = (event: UiEvent) => {
@@ -502,6 +520,7 @@ export default function NeovimEditor(props: Props) {
 			});
 			started = true;
 			await requestResize();
+			requestViewportLine();
 			props.onStatus("Neovim connected");
 			input.focus();
 		}catch(error){
