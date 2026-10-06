@@ -104,4 +104,16 @@ extensions/
 
 `extensions/` を `extensions_path` に渡す。
 
-修正版の実機再確認待ち。
+修正版をWindows実機で再確認し、`https://example.com` 上部へ
+
+```text
+Quire WebView2 extension: content script active
+```
+
+のbannerが表示されることを確認した。
+
+これにより、Manifest V3 unpacked extensionの読み込みとcontent script注入は成立した。
+
+Spikeの主要目的である「content script型Chromium拡張をWebView2上で再利用できるか」については成立と判断する。
+
+service worker / storage / popup等の詳細な互換性は、本体Browser実装時にも継続確認する。
