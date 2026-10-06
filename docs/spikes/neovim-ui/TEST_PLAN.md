@@ -64,7 +64,25 @@ The quick brown fox jumps over the lazy dog.
 
 ブラウザ側のshortcut処理がNeovimの通常キー操作を不必要に奪っていないことを確認する。
 
-## 5. 日本語表示
+## 5. マウス
+
+- 左クリックでcursorを移動する。
+- 左ドラッグでVisual selectionできる。
+- 中クリック、右クリックがNeovimへ届く。
+- 縦ホイールでscrollする。
+- 対応環境では横ホイールも確認する。
+- Shift / Ctrl / Altを押したclickが修飾付きmouse eventとして届く。
+- editor外へdragして戻した場合にbutton状態が壊れない。
+- 右クリックでWebView標準context menuが割り込まない。
+
+確認:
+
+- click位置とNeovim cell位置が一致する。
+- drag中にcursor位置が大きく飛ばない。
+- wheel操作で描画に古い文字が残らない。
+- mouse操作後もkeyboard / IME focusへ戻れる。
+
+## 6. 日本語表示
 
 次を既存ファイルまたは入力で表示する。
 
@@ -83,7 +101,7 @@ The quick brown fox jumps over the lazy dog.
 - ASCIIとの混在で位置がずれない。
 - 絵文字で後続文字が大きくずれない。
 
-## 6. 日本語IME
+## 7. 日本語IME
 
 Insert modeでIMEをONにする。
 
@@ -114,7 +132,7 @@ Phase 1で確認した「UTF-8文字列を `nvim_input` へ送信できる」と
 
 ここが実用にならなければNeovim Editor方式の採用判断を見直す。
 
-## 7. 長文・連続入力
+## 8. 長文・連続入力
 
 - 5分以上連続で入力する。
 - 1000文字以上入力する。
@@ -131,7 +149,7 @@ Phase 1で確認した「UTF-8文字列を `nvim_input` へ送信できる」と
 - CPU使用率の異常上昇。
 - メモリ増加。
 
-## 8. Resize / DPI
+## 9. Resize / DPI
 
 - Windowを連続resizeする。
 - 最大化・元に戻す。
@@ -147,7 +165,7 @@ Phase 1で確認した「UTF-8文字列を `nvim_input` へ送信できる」と
 - IME候補位置。
 - Neovim grid size。
 
-## 9. 異常系
+## 10. 異常系
 
 - Neovim processをTask Manager等から強制終了する。
 - アプリ側が固まらない。
