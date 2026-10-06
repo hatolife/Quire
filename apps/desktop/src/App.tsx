@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 import NeovimEditor from "./editor/NeovimEditor";
 
 type WorkspaceInfo = {
@@ -24,6 +24,11 @@ type Document = {
 	relativePath: string;
 	content: string;
 	revision: string;
+};
+
+type DesktopSettings = {
+	explorerWidth: number;
+	editorRatio: number;
 };
 
 const markdown = new MarkdownIt({
@@ -64,6 +69,28 @@ function App() {
 	const [editorRatio, setEditorRatio] = createSignal(0.5);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
+
+	const persistLayout = async () => {
+		try{
+			await invoke("settings_save", {
+				settings: {
+					explorerWidth: explorerWidth(),
+					editorRatio: editorRatio(),
+				} satisfies DesktopSettings,
+			});
+		}catch(error){
+			setStatus("Settings save error: " + String(error));
+		}
+	};
+
+	onMount(() => {
+		void invoke<DesktopSettings>("settings_load")
+			.then(settings => {
+				setExplorerWidth(Math.max(180, Math.min(420, settings.explorerWidth)));
+				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
+			})
+			.catch(error => setStatus("Settings load error: " + String(error)));
+	});
 
 	const previewAnchors = () => {
 		const previewRect = previewElement.getBoundingClientRect();
@@ -137,6 +164,7 @@ function App() {
 		const handleUp = () => {
 			window.removeEventListener("pointermove", handleMove);
 			window.removeEventListener("pointerup", handleUp);
+			void persistLayout();
 		};
 		window.addEventListener("pointermove", handleMove);
 		window.addEventListener("pointerup", handleUp, { once: true });
@@ -156,6 +184,7 @@ function App() {
 		const handleUp = () => {
 			window.removeEventListener("pointermove", handleMove);
 			window.removeEventListener("pointerup", handleUp);
+			void persistLayout();
 		};
 		window.addEventListener("pointermove", handleMove);
 		window.addEventListener("pointerup", handleUp, { once: true });

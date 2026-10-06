@@ -14,3 +14,4 @@ rmpv = "1"
 serde.workspace = true
 tauri = { version = "2" }
 tauri-plugin-dialog = "2"
+toml = "0.8"

@@ -1,4 +1,5 @@
 mod editor;
+mod settings;
 
 use quire_core::{Document, Workspace, WorkspaceEntry, WorkspaceInfo};
 use serde::Serialize;
@@ -111,6 +112,16 @@ fn editor_stop(editor_state: tauri::State<'_, editor::EditorState>) -> Result<()
 	editor::stop(&editor_state)
 }
 
+#[tauri::command]
+fn settings_load(app: tauri::AppHandle) -> Result<settings::DesktopSettings, String> {
+	settings::load(&app)
+}
+
+#[tauri::command]
+fn settings_save(settings: settings::DesktopSettings, app: tauri::AppHandle) -> Result<(), String> {
+	settings::save(&app, &settings)
+}
+
 fn with_workspace<T>(state: &tauri::State<'_, AppState>, operation: impl FnOnce(&Workspace) -> Result<T, String>) -> Result<T, String> {
 	let current = state.workspace.lock().map_err(|_| "Workspace state lock failed.".to_string())?;
 	let workspace = current.as_ref().ok_or_else(|| "Workspace is not open.".to_string())?;
@@ -137,6 +148,8 @@ fn main() {
 			editor_get_top_line,
 			editor_set_top_line,
 			editor_stop,
+			settings_load,
+			settings_save,
 		])
 		.run(tauri::generate_context!())
 		.expect("failed to run Quire");
