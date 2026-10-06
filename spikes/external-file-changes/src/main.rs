@@ -150,7 +150,7 @@ fn verify_dirty_conflict(root: &Path, rx: &Receiver<notify::Result<Event>>) -> R
 	wait_for_event(rx, &[&path], "external conflict update")?;
 	let disk = fs::read_to_string(&path)?;
 	let result = state.reconcile(&disk);
-	if result != ReconcileResult::Conflict {
+	if !matches!(result, ReconcileResult::Conflict { .. }) {
 		bail!("dirty documentをConflictとして検出できなかった: {result:?}");
 	}
 	if state.buffer != "local unsaved edit\n" {
@@ -167,7 +167,7 @@ fn verify_bulk_changes(root: &Path, rx: &Receiver<notify::Result<Event>>) -> Res
 	}
 	let events = drain_until_quiet(rx, Duration::from_secs(8), Duration::from_millis(300))?;
 	if events.is_empty() { bail!("大量変更でfilesystem eventを一件も受信しなかった。"); }
-	let count = fs::read_dir(&bulk)?.filter_map(Result::ok).filter(|entry| entry.path().extension().and_then(|v| v.to_str()) == Some("md")).count();
+	let count = fs::read_dir(&bulk)?.filter_map(|entry| entry.ok()).filter(|entry| entry.path().extension().and_then(|v| v.to_str()) == Some("md")).count();
 	if count != 200 { bail!("再走査結果が不正。expected=200 actual={count}"); }
 	println!("bulk_events={} files={count}", events.len());
 	Ok(())
