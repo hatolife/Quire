@@ -176,11 +176,11 @@ fn verify_bulk_changes(root: &Path, rx: &Receiver<notify::Result<Event>>) -> Res
 fn verify_git_checkout(root: &Path, rx: &Receiver<notify::Result<Event>>) -> Result<()> {
 	let path = root.join("versioned.txt");
 	let before = fs::read_to_string(&path)?;
-	if before != "state-b\n" { bail!("checkout検証の初期状態が不正。"); }
+	if before.trim_end_matches(['\r', '\n']) != "state-b" { bail!("checkout検証の初期状態が不正。"); }
 	git(root, &["checkout", "HEAD~1", "--", "versioned.txt"])?;
 	wait_for_event(rx, &[&path], "git checkout")?;
 	let after = fs::read_to_string(&path)?;
-	if after != "state-a\n" { bail!("git checkout後の再走査結果が不正。"); }
+	if after.trim_end_matches(['\r', '\n']) != "state-a" { bail!("git checkout後の再走査結果が不正。"); }
 	Ok(())
 }
 
