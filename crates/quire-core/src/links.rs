@@ -94,7 +94,7 @@ impl Workspace {
 		Ok(backlinks)
 	}
 
-	fn resolve_wiki_target(&self, source_relative_path: &str, raw_target: &str) -> Result<Option<String>, WorkspaceError> {
+	pub fn resolve_wiki_target(&self, source_relative_path: &str, raw_target: &str) -> Result<Option<String>, WorkspaceError> {
 		let target = raw_target
 			.split('#')
 			.next()

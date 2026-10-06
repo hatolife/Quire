@@ -33,6 +33,12 @@ export type SearchHit = {
 	preview: string;
 };
 
+export type Backlink = {
+	sourcePath: string;
+	line: number;
+	preview: string;
+};
+
 export type DesktopSettings = {
 	explorerWidth: number;
 	editorRatio: number;
@@ -64,6 +70,14 @@ export function workspaceWatchStop() {
 
 export function workspaceSearch(query: string, limit = 100) {
 	return invoke<SearchHit[]>("workspace_search", { query, limit });
+}
+
+export function documentBacklinks(relativePath: string) {
+	return invoke<Backlink[]>("document_backlinks", { relativePath });
+}
+
+export function documentResolveWikiLink(sourceRelativePath: string, target: string) {
+	return invoke<string | null>("document_resolve_wiki_link", { sourceRelativePath, target });
 }
 
 export function documentOpen(relativePath: string) {

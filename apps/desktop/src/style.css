@@ -210,11 +210,14 @@ button.primary {
 	tab-size: 4;
 }
 
-.markdown-preview {
+.preview-scroll {
 	height: calc(100% - 32px);
-	margin: 0;
-	padding: 20px 28px 80px;
 	overflow: auto;
+}
+
+.markdown-preview {
+	margin: 0;
+	padding: 20px 28px 40px;
 	line-height: 1.7;
 }
 
@@ -442,4 +445,43 @@ button.primary {
 	padding: 10px 8px;
 	color: #777;
 	font-size: 12px;
+}
+
+.markdown-preview a.wiki-link {
+	text-decoration-style: dotted;
+}
+
+.backlinks {
+	margin: 0 28px 80px;
+	padding-top: 16px;
+	border-top: 1px solid #333;
+}
+
+.backlinks h3 {
+	margin: 0 0 8px;
+	font-size: 13px;
+	color: #aaa;
+}
+
+.backlink {
+	display: grid;
+	width: 100%;
+	grid-template-columns: 1fr;
+	gap: 2px;
+	margin: 2px 0;
+	padding: 6px 8px;
+	border: 0;
+	background: transparent;
+	text-align: left;
+}
+
+.backlink:hover {
+	background: #292929;
+}
+
+.backlink small {
+	overflow: hidden;
+	color: #888;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }

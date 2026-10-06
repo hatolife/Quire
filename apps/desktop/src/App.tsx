@@ -6,10 +6,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import NeovimEditor from "./editor/NeovimEditor";
 import {
 	assetRead,
+	documentBacklinks,
 	documentCreate,
 	documentDelete,
 	documentMove,
 	documentOpen,
+	documentResolveWikiLink,
 	editorSave,
 	editorSetTopLine,
 	logAppend,
@@ -22,6 +24,7 @@ import {
 	workspaceSearch,
 	workspaceWatch,
 	workspaceWatchStop,
+	type Backlink,
 	type DesktopSettings,
 	type Document,
 	type LogEntry,
@@ -35,6 +38,28 @@ const markdown = new MarkdownIt({
 	html: false,
 	linkify: true,
 	typographer: false,
+});
+
+markdown.inline.ruler.before("emphasis", "quire_wiki_link", (state, silent) => {
+	if(state.src.slice(state.pos, state.pos + 2) !== "[["){ return false; }
+	const end = state.src.indexOf("]]", state.pos + 2);
+	if(end < 0){ return false; }
+	const body = state.src.slice(state.pos + 2, end).trim();
+	if(!body){ return false; }
+	const separator = body.indexOf("|");
+	const target = (separator >= 0 ? body.slice(0, separator) : body).trim();
+	const label = (separator >= 0 ? body.slice(separator + 1) : target).trim() || target;
+	if(!target){ return false; }
+	if(!silent){
+		const open = state.push("link_open", "a", 1);
+		open.attrSet("href", "quire-wiki:" + encodeURIComponent(target));
+		open.attrSet("class", "wiki-link");
+		const text = state.push("text", "", 0);
+		text.content = label;
+		state.push("link_close", "a", -1);
+	}
+	state.pos = end + 2;
+	return true;
 });
 
 const PREVIEW_IMAGE_PLACEHOLDER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
@@ -102,6 +127,7 @@ function App() {
 	const [searchResults, setSearchResults] = createSignal<SearchHit[]>([]);
 	const [searching, setSearching] = createSignal(false);
 	const [initialEditorLine, setInitialEditorLine] = createSignal<number | undefined>();
+	const [backlinks, setBacklinks] = createSignal<Backlink[]>([]);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
@@ -459,6 +485,7 @@ function App() {
 			setDocument(created);
 			setDraft(contentForEditor(created.content));
 			setExternalConflict(false);
+			setBacklinks([]);
 			updateStatus(created.relativePath + " を作成しました", "info", "document");
 		}catch(error){
 			updateStatus("Document create error: " + String(error), "error", "document");
@@ -482,6 +509,7 @@ function App() {
 			setDocument(moved);
 			setDraft(contentForEditor(moved.content));
 			setExternalConflict(false);
+			void refreshBacklinks(moved.relativePath);
 			updateStatus(current.relativePath + " → " + moved.relativePath, "info", "document");
 		}catch(error){
 			updateStatus("Document move error: " + String(error), "error", "document");
@@ -501,6 +529,7 @@ function App() {
 			setDocument(null);
 			setDraft("");
 			setExternalConflict(false);
+			setBacklinks([]);
 			assetCache.clear();
 			await refreshExplorer();
 			updateStatus(current.relativePath + " を削除しました", "info", "document");
@@ -520,6 +549,7 @@ function App() {
 			if(line !== undefined || document()?.relativePath === relativePath){
 				setEditorSession(value => value + 1);
 			}
+			void refreshBacklinks(relativePath);
 			updateStatus(relativePath, "info", "document");
 		}catch(error){
 			updateStatus("Document open error: " + String(error), "error", "document");
@@ -528,6 +558,35 @@ function App() {
 
 	const openSearchHit = async (hit: SearchHit) => {
 		await openDocument(hit.relativePath, hit.line);
+	};
+
+	const refreshBacklinks = async (relativePath: string) => {
+		try{
+			setBacklinks(await documentBacklinks(relativePath));
+		}catch(error){
+			setBacklinks([]);
+			updateStatus("Backlink error: " + String(error), "error", "links");
+		}
+	};
+
+	const handlePreviewClick = async (event: MouseEvent) => {
+		const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href^='quire-wiki:']");
+		if(!anchor){ return; }
+		event.preventDefault();
+		const current = document();
+		if(!current){ return; }
+		const encoded = anchor.getAttribute("href")?.slice("quire-wiki:".length) ?? "";
+		const target = decodeURIComponent(encoded);
+		try{
+			const resolved = await documentResolveWikiLink(current.relativePath, target);
+			if(!resolved){
+				updateStatus("未解決Wiki Link: [[" + target + "]]", "warn", "links");
+				return;
+			}
+			await openDocument(resolved);
+		}catch(error){
+			updateStatus("Wiki Link error: " + String(error), "error", "links");
+		}
 	};
 
 	const saveDocument = async () => {
@@ -665,12 +724,26 @@ function App() {
 							when={document()}
 							fallback={<div class="empty-pane">Preview</div>}
 						>
-							<article
-								ref={previewElement}
-								class="markdown-preview"
-								innerHTML={preview()}
-								onScroll={handlePreviewScroll}
-							/>
+							<div class="preview-scroll" ref={previewElement} onScroll={handlePreviewScroll}>
+								<article
+									class="markdown-preview"
+									innerHTML={preview()}
+									onClick={event => void handlePreviewClick(event as MouseEvent)}
+								/>
+								<Show when={backlinks().length > 0}>
+									<section class="backlinks">
+										<h3>Backlinks</h3>
+										<For each={backlinks()}>
+											{backlink => (
+												<button class="backlink" onClick={() => void openDocument(backlink.sourcePath, backlink.line)}>
+													<span>{backlink.sourcePath}:{backlink.line}</span>
+													<small>{backlink.preview}</small>
+												</button>
+											)}
+										</For>
+									</section>
+								</Show>
+							</div>
 						</Show>
 					</section>
 				</div>
