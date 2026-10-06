@@ -1,6 +1,8 @@
+mod links;
 mod search;
 mod workspace;
 
+pub use links::{Backlink, WikiLink};
 pub use search::{SearchHit, SearchKind};
 pub use workspace::{
 	Document,
