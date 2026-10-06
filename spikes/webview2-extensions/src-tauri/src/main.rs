@@ -1,25 +1,24 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tauri::{Manager, WebviewUrl};
 
-fn extension_dir() -> Result<PathBuf, std::io::Error> {
-	let exe = std::env::current_exe()?;
-	let exe_dir = exe.parent().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "実行ファイルのディレクトリを取得できなかった。"))?;
-	let adjacent = exe_dir.join("extension");
-	if adjacent.is_dir(){ return Ok(adjacent); }
-
-	let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("extension");
-	if source.is_dir(){ return Ok(source); }
-
-	Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("WebView2 extensionディレクトリが見つからない。EXE横にextensionフォルダを配置すること。exe={}", exe.display())))
+fn write_extension_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
+	if fs::read_to_string(path).ok().as_deref() == Some(content){ return Ok(()); }
+	fs::write(path, content)
 }
 
 fn main() {
 	tauri::Builder::default()
 		.setup(|app| {
-			let extension_dir = extension_dir()?;
-			let profile_dir = app.path().app_local_data_dir()?.join("webview2-profile");
+			let app_data = app.path().app_local_data_dir()?;
+			let extension_dir = app_data.join("extension");
+			let profile_dir = app_data.join("webview2-profile");
+			fs::create_dir_all(&extension_dir)?;
 			fs::create_dir_all(&profile_dir)?;
+			write_extension_file(&extension_dir.join("manifest.json"), include_str!("../../extension/manifest.json"))?;
+			write_extension_file(&extension_dir.join("content.js"), include_str!("../../extension/content.js"))?;
+			write_extension_file(&extension_dir.join("background.js"), include_str!("../../extension/background.js"))?;
+
 			tauri::WebviewWindowBuilder::new(
 				app,
 				"browser",
