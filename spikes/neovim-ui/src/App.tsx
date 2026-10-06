@@ -76,6 +76,7 @@ function App() {
 	let input!: HTMLTextAreaElement;
 	let resizeObserver: ResizeObserver | undefined;
 	let composing = false;
+	let committedCompositionText: string | null = null;
 	let started = false;
 	let mouseDownButton: string | null = null;
 	let cellWidth = 9;
@@ -417,7 +418,23 @@ function App() {
 		if(composing || event.isComposing){ return; }
 		const text = input.value;
 		input.value = "";
+		if(committedCompositionText !== null){
+			if(text === committedCompositionText || !text){
+				committedCompositionText = null;
+				return;
+			}
+			committedCompositionText = null;
+		}
 		if(text){ void sendInput(text); }
+	};
+
+	const handleCompositionEnd = (event: CompositionEvent) => {
+		composing = false;
+		const text = event.data || input.value;
+		input.value = "";
+		if(!text){ return; }
+		committedCompositionText = text;
+		void sendInput(text);
 	};
 
 	onMount(async () => {
@@ -479,8 +496,11 @@ function App() {
 					aria-label="Neovim input"
 					onKeyDown={handleKeyDown}
 					onInput={event => handleInput(event as InputEvent)}
-					onCompositionStart={() => { composing = true; }}
-					onCompositionEnd={() => { composing = false; }}
+					onCompositionStart={() => {
+						composing = true;
+						committedCompositionText = null;
+					}}
+					onCompositionEnd={event => handleCompositionEnd(event as CompositionEvent)}
 				/>
 			</div>
 		</div>
