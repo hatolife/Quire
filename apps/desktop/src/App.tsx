@@ -4,6 +4,7 @@ import MarkdownIt from "markdown-it";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import BrowserPane from "./browser/BrowserPane";
+import CommandPalette, { type AppCommand } from "./commands/CommandPalette";
 import NeovimEditor from "./editor/NeovimEditor";
 import {
 	assetRead,
@@ -111,6 +112,7 @@ function App() {
 	let suppressEditorViewport = false;
 	let suppressPreviewScroll = false;
 	let closeUnlisten: (() => void) | undefined;
+	let commandKeyHandler: ((event: KeyboardEvent) => void) | undefined;
 	let reconcileTimer: number | undefined;
 	let searchTimer: number | undefined;
 	let settingsTimer: number | undefined;
@@ -140,6 +142,7 @@ function App() {
 	const [snapshots, setSnapshots] = createSignal<Snapshot[]>([]);
 	const [settingsReady, setSettingsReady] = createSignal(false);
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
+	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
@@ -399,6 +402,14 @@ function App() {
 				updateStatus("Settings load error: " + String(error), "error", "settings");
 			});
 
+		commandKeyHandler = (event: KeyboardEvent) => {
+			if(event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "p"){
+				event.preventDefault();
+				setCommandPaletteOpen(true);
+			}
+		};
+		window.addEventListener("keydown", commandKeyHandler);
+
 		void getCurrentWindow().onCloseRequested(event => {
 			if(!dirty()){ return; }
 			if(!window.confirm("未保存の変更があります。破棄してQuireを終了しますか？")){
@@ -413,6 +424,7 @@ function App() {
 
 	onCleanup(() => {
 		closeUnlisten?.();
+		if(commandKeyHandler){ window.removeEventListener("keydown", commandKeyHandler); }
 		++watchGeneration;
 		if(reconcileTimer !== undefined){ window.clearTimeout(reconcileTimer); }
 		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
@@ -757,6 +769,68 @@ function App() {
 		}
 	};
 
+	const commands = (): AppCommand[] => [
+		{
+			id: "workspace.open",
+			title: "Workspaceを開く",
+			keywords: "folder vault open",
+			run: () => chooseWorkspace(),
+		},
+		{
+			id: "document.create",
+			title: "新規Markdown",
+			keywords: "new document note",
+			enabled: workspace() !== null,
+			run: () => createDocument(),
+		},
+		{
+			id: "document.save",
+			title: "Documentを保存",
+			keywords: "save write",
+			shortcut: "Ctrl+S",
+			enabled: document() !== null && dirty(),
+			run: () => saveDocument(),
+		},
+		{
+			id: "workspace.snapshot",
+			title: "Snapshotを作成",
+			keywords: "history snapshot",
+			enabled: workspace() !== null && !historyBusy(),
+			run: () => createHistorySnapshot(),
+		},
+		{
+			id: "history.show",
+			title: "履歴を表示",
+			keywords: "history restore",
+			enabled: workspace() !== null,
+			run: () => {
+				setHistoryOpen(true);
+				void refreshHistory();
+			},
+		},
+		{
+			id: "pane.preview",
+			title: "Preview paneを表示",
+			keywords: "markdown preview pane",
+			run: () => setRightPaneMode("preview"),
+		},
+		{
+			id: "pane.browser",
+			title: "Browser paneを表示",
+			keywords: "web browser pane",
+			run: () => setRightPaneMode("browser"),
+		},
+		{
+			id: "logs.show",
+			title: "ログを表示",
+			keywords: "diagnostic log",
+			run: () => {
+				setLogOpen(true);
+				void refreshLogs();
+			},
+		},
+	];
+
 	return (
 		<div class="app">
 			<header class="toolbar">
@@ -927,6 +1001,12 @@ function App() {
 					</section>
 				</div>
 			</Show>
+
+			<CommandPalette
+				open={commandPaletteOpen()}
+				commands={commands()}
+				onClose={() => setCommandPaletteOpen(false)}
+			/>
 
 			<Show when={historyOpen()}>
 				<div class="history-drawer">

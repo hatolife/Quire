@@ -635,3 +635,68 @@ button.primary {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+.command-palette-backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: 100;
+	display: grid;
+	place-items: start center;
+	padding-top: 12vh;
+	background: rgba(0, 0, 0, 0.35);
+}
+
+.command-palette {
+	width: min(620px, calc(100% - 32px));
+	max-height: min(520px, 72vh);
+	display: grid;
+	grid-template-rows: 44px minmax(0, 1fr);
+	overflow: hidden;
+	background: #1d1d1d;
+	border: 1px solid #4b4b4b;
+	border-radius: 7px;
+	box-shadow: 0 16px 48px rgba(0, 0, 0, 0.52);
+}
+
+.command-palette > input {
+	width: 100%;
+	padding: 0 14px;
+	border: 0;
+	border-bottom: 1px solid #3a3a3a;
+	outline: 0;
+	background: #161616;
+	color: #eee;
+	font-size: 15px;
+}
+
+.command-list {
+	overflow: auto;
+	padding: 5px;
+}
+
+.command-entry {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 10px;
+	border: 0;
+	background: transparent;
+	text-align: left;
+}
+
+.command-entry.selected,
+.command-entry:hover {
+	background: #303030;
+}
+
+.command-entry kbd {
+	margin-left: auto;
+	color: #888;
+	font: 11px "Cascadia Mono", Consolas, monospace;
+}
+
+.command-empty {
+	padding: 16px 10px;
+	color: #777;
+}
