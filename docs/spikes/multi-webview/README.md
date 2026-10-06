@@ -73,6 +73,15 @@ Windows実機でproduction executableを起動し、次を確認した。
 - child WebViewで `https://example.com` を表示できた。
 - Browser paneの初期bounds同期が成立した。
 
-初期表示は成立した。
+初期表示に加えて、今回提示した実機チェック項目をすべて確認し、問題は確認されなかった。
 
-pane比率変更、focus、hide/show、Window resize、DPI scaling、keyboard shortcut競合、複数Browser paneは引き続き確認する。
+- pane比率変更。
+- focus移動。
+- hide / show。
+- Window resize追従。
+- Browser側のmouse / keyboard操作。
+- Quire UI側へのfocus復帰。
+
+同一Window内child WebView方式は、現時点のSpike目的に対して合格とする。
+
+複数Browser paneやより詳細なDPI差異などは本体実装時にも継続確認する。
