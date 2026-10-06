@@ -79,3 +79,29 @@ Quireで重要なのは「Chrome完全互換」ではなく、content script等�
 ### 方式再検討
 
 content scriptすら安定しない、またはprofile分離とextension有効化がQuireのBrowser構成と両立しない場合は、userscript等の代替方式を比較する。
+
+## 実機確認 2026-10-06
+
+Windows実機でproduction executableを起動し、WebView2自体で `https://example.com` を表示できた。
+
+一方、期待していた `Quire WebView2 extension: content script active` bannerは表示されず、content scriptが読み込まれていないことを確認した。
+
+原因はWry 0.57.0の `extensions_path` の意味を誤っていたことだった。
+
+Wryは指定されたpath自体をunpacked extensionとして読み込まず、指定pathを列挙して各子directoryを `AddBrowserExtension` へ渡す。
+
+従来実装は `manifest.json`、`content.js`、`background.js` が直接存在するdirectoryを渡していたため不正だった。
+
+修正後は次の構造に変更した。
+
+```text
+extensions/
+└─ quire-spike/
+   ├─ manifest.json
+   ├─ content.js
+   └─ background.js
+```
+
+`extensions/` を `extensions_path` に渡す。
+
+修正版の実機再確認待ち。
