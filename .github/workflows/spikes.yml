@@ -1,0 +1,138 @@
+name: Spikes
+
+on:
+  push:
+    paths:
+      - "spikes/**"
+      - ".github/workflows/spikes.yml"
+  pull_request:
+    paths:
+      - "spikes/**"
+      - ".github/workflows/spikes.yml"
+
+concurrency:
+  group: spikes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  neovim-embed-spike:
+    name: Neovim embed spike
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/neovim-embed -> target
+
+      - name: Install Neovim
+        shell: powershell
+        run: |
+          choco install neovim -y --no-progress
+          "C:\tools\neovim\nvim-win64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Run Neovim embed spike
+        run: cargo run --manifest-path spikes/neovim-embed/Cargo.toml
+
+  git-snapshot-isolation-spike:
+    name: Git snapshot isolation spike
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/git-snapshot-isolation -> target
+
+      - name: Run Git snapshot isolation spike
+        run: cargo run --release --manifest-path spikes/git-snapshot-isolation/Cargo.toml
+
+  external-file-changes-spike:
+    name: External file changes spike
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/external-file-changes -> target
+
+      - name: Run external file changes spike
+        run: cargo run --release --manifest-path spikes/external-file-changes/Cargo.toml
+
+  windows-gui-spikes:
+    name: Windows GUI spikes package
+    runs-on: windows-latest
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target/gui-spikes
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/neovim-ui/src-tauri -> ../../../target/gui-spikes
+
+      - name: Install Neovim UI frontend dependencies
+        working-directory: spikes/neovim-ui
+        run: npm install
+
+      - name: Install Multi WebView frontend dependencies
+        working-directory: spikes/multi-webview
+        run: npm install
+
+      - name: Build Neovim UI production executable
+        working-directory: spikes/neovim-ui
+        run: npm run tauri build -- --no-bundle
+
+      - name: Build Multi WebView production executable
+        working-directory: spikes/multi-webview
+        run: npm run tauri build -- --no-bundle
+
+      - name: Build WebView2 Extensions executable
+        run: cargo build --release --manifest-path spikes/webview2-extensions/src-tauri/Cargo.toml
+
+      - name: Assemble Windows spike package
+        shell: powershell
+        run: |
+          $package = "dist\quire-spikes-windows"
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item "$env:CARGO_TARGET_DIR\release\quire-neovim-ui-spike.exe" "$package\quire-neovim-ui-spike.exe"
+          Copy-Item "$env:CARGO_TARGET_DIR\release\quire-multi-webview-spike.exe" "$package\quire-multi-webview-spike.exe"
+          Copy-Item "$env:CARGO_TARGET_DIR\release\quire-webview2-extensions-spike.exe" "$package\quire-webview2-extensions-spike.exe"
+
+      - name: Set Windows spike package name
+        id: package
+        shell: powershell
+        run: |
+          $jst = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow, "Tokyo Standard Time")
+          $timestamp = $jst.ToString("yyyyMMddHHmmss")
+          $hash = $env:GITHUB_SHA.Substring(0, 7)
+          "name=quire-spikes-windows-v0.0.1.$timestamp.$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload Windows GUI spikes
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.name }}
+          if-no-files-found: error
+          path: dist/quire-spikes-windows
