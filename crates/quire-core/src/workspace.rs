@@ -88,6 +88,7 @@ impl Workspace {
 		let mut entries = Vec::new();
 		for entry in fs::read_dir(directory)? {
 			let entry = entry?;
+			let path = entry.path();
 			let name = entry.file_name().to_string_lossy().into_owned();
 			if name == ".git" {
 				continue;
@@ -95,12 +96,12 @@ impl Workspace {
 			let file_type = entry.file_type()?;
 			let kind = if file_type.is_dir() {
 				EntryKind::Directory
-			}else if entry.path().extension().and_then(|extension| extension.to_str()).is_some_and(|extension| extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown")) {
+			}else if path.extension().and_then(|extension| extension.to_str()).is_some_and(|extension| extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown")) {
 				EntryKind::Markdown
 			}else{
 				EntryKind::File
 			};
-			let relative = entry.path().strip_prefix(&self.root).map_err(|_| WorkspaceError::InvalidRelativePath(entry.path().display().to_string()))?;
+			let relative = path.strip_prefix(&self.root).map_err(|_| WorkspaceError::InvalidRelativePath(path.display().to_string()))?;
 			entries.push(WorkspaceEntry {
 				name,
 				relative_path: portable_path(relative),
