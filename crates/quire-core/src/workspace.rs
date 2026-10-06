@@ -175,6 +175,79 @@ impl Workspace {
 		self.read_document(relative_path)
 	}
 
+	pub fn create_document(&self, relative_path: &str, content: &str) -> Result<Document, WorkspaceError> {
+		let path = self.resolve_new_file(relative_path)?;
+		let mut file = fs::OpenOptions::new()
+			.write(true)
+			.create_new(true)
+			.open(&path)?;
+		if let Err(error) = file.write_all(content.as_bytes()).and_then(|_| file.sync_all()) {
+			drop(file);
+			let _ = fs::remove_file(&path);
+			return Err(WorkspaceError::Io(error));
+		}
+		drop(file);
+		self.read_document(relative_path)
+	}
+
+	pub fn move_document(
+		&self,
+		from_relative_path: &str,
+		to_relative_path: &str,
+		expected_revision: Option<&str>,
+	) -> Result<Document, WorkspaceError> {
+		let source = self.document_path(from_relative_path)?;
+		if let Some(expected_revision) = expected_revision {
+			let current = fs::read(&source)?;
+			if revision(&current) != expected_revision {
+				return Err(WorkspaceError::Conflict(from_relative_path.to_string()));
+			}
+		}
+		let target = self.resolve_new_file(to_relative_path)?;
+		fs::rename(source, target)?;
+		self.read_document(to_relative_path)
+	}
+
+	pub fn delete_document(&self, relative_path: &str, expected_revision: Option<&str>) -> Result<(), WorkspaceError> {
+		let path = self.document_path(relative_path)?;
+		if let Some(expected_revision) = expected_revision {
+			let current = fs::read(&path)?;
+			if revision(&current) != expected_revision {
+				return Err(WorkspaceError::Conflict(relative_path.to_string()));
+			}
+		}
+		fs::remove_file(path)?;
+		Ok(())
+	}
+
+	fn resolve_new_file(&self, relative_path: &str) -> Result<PathBuf, WorkspaceError> {
+		let relative = Path::new(relative_path);
+		if relative.as_os_str().is_empty()
+			|| relative.is_absolute()
+			|| relative.components().any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
+			|| relative.components().any(|component| matches!(component, Component::Normal(name) if name == ".git"))
+		{
+			return Err(WorkspaceError::InvalidRelativePath(relative_path.to_string()));
+		}
+
+		let file_name = relative
+			.file_name()
+			.ok_or_else(|| WorkspaceError::InvalidRelativePath(relative_path.to_string()))?;
+		let parent_relative = relative.parent().unwrap_or_else(|| Path::new(""));
+		let parent = fs::canonicalize(self.root.join(parent_relative))?;
+		if !parent.starts_with(&self.root) || !parent.is_dir() {
+			return Err(WorkspaceError::InvalidRelativePath(relative_path.to_string()));
+		}
+		let target = parent.join(file_name);
+		if target.exists() {
+			return Err(WorkspaceError::Io(std::io::Error::new(
+				std::io::ErrorKind::AlreadyExists,
+				format!("Path already exists: {}", target.display()),
+			)));
+		}
+		Ok(target)
+	}
+
 	fn resolve_existing(&self, relative_path: &str) -> Result<PathBuf, WorkspaceError> {
 		let relative = Path::new(relative_path);
 		if relative.is_absolute() || relative.components().any(|component| !matches!(component, Component::Normal(_) | Component::CurDir)) {
@@ -256,6 +329,77 @@ mod tests {
 
 		assert!(matches!(
 			workspace.read_asset("note.md", "../outside.png"),
+			Err(WorkspaceError::InvalidRelativePath(_))
+		));
+	}
+
+	#[test]
+	fn create_move_and_delete_document() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir(temp.path().join("notes")).unwrap();
+		fs::create_dir(temp.path().join("archive")).unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+
+		let created = workspace.create_document("notes/new.md", "# New\n").unwrap();
+		assert_eq!(created.relative_path, "notes/new.md");
+		assert_eq!(created.content, "# New\n");
+
+		let moved = workspace
+			.move_document("notes/new.md", "archive/renamed.md", Some(&created.revision))
+			.unwrap();
+		assert_eq!(moved.relative_path, "archive/renamed.md");
+		assert!(!temp.path().join("notes").join("new.md").exists());
+
+		workspace.delete_document("archive/renamed.md", Some(&moved.revision)).unwrap();
+		assert!(!temp.path().join("archive").join("renamed.md").exists());
+	}
+
+	#[test]
+	fn create_document_does_not_overwrite_existing_file() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("note.md"), "existing").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+
+		assert!(workspace.create_document("note.md", "replacement").is_err());
+		assert_eq!(fs::read_to_string(temp.path().join("note.md")).unwrap(), "existing");
+	}
+
+	#[test]
+	fn move_document_does_not_overwrite_target() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("a.md"), "a").unwrap();
+		fs::write(temp.path().join("b.md"), "b").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let source = workspace.read_document("a.md").unwrap();
+
+		assert!(workspace.move_document("a.md", "b.md", Some(&source.revision)).is_err());
+		assert_eq!(fs::read_to_string(temp.path().join("a.md")).unwrap(), "a");
+		assert_eq!(fs::read_to_string(temp.path().join("b.md")).unwrap(), "b");
+	}
+
+	#[test]
+	fn delete_document_detects_external_change() {
+		let temp = tempfile::tempdir().unwrap();
+		let path = temp.path().join("note.md");
+		fs::write(&path, "before").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let document = workspace.read_document("note.md").unwrap();
+		fs::write(&path, "external").unwrap();
+
+		assert!(matches!(
+			workspace.delete_document("note.md", Some(&document.revision)),
+			Err(WorkspaceError::Conflict(_))
+		));
+		assert!(path.exists());
+	}
+
+	#[test]
+	fn create_document_rejects_workspace_escape() {
+		let temp = tempfile::tempdir().unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+
+		assert!(matches!(
+			workspace.create_document("../escape.md", ""),
 			Err(WorkspaceError::InvalidRelativePath(_))
 		));
 	}
