@@ -49,7 +49,7 @@ impl RpcClient {
 		self.stdin.flush().context("Neovim stdinのflushに失敗した。")?;
 
 		loop {
-			let value = self.rx.recv_timeout(Duration::from_secs(10)).context("Neovim RPC responseがタイムアウトした。")??;
+			let value = self.rx.recv_timeout(Duration::from_secs(10)).context("Neovim RPC responseがタイムアウトした。")?.map_err(|err| anyhow!("Neovim RPC reader error: {err}"))?;
 			if self.handle_notification(&value) {
 				continue;
 			}
