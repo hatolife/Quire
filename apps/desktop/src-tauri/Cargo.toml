@@ -1,0 +1,15 @@
+[package]
+name = "quire-desktop"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2" }
+
+[dependencies]
+quire-core = { path = "../../../crates/quire-core" }
+serde.workspace = true
+tauri = { version = "2" }
+tauri-plugin-dialog = "2"
