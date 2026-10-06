@@ -1,0 +1,238 @@
+:root {
+	font-family: "Segoe UI", system-ui, sans-serif;
+	color: #ddd;
+	background: #141414;
+	font-synthesis: none;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	overflow: hidden;
+}
+
+button,
+textarea {
+	font: inherit;
+}
+
+button {
+	color: #ddd;
+	background: #292929;
+	border: 1px solid #414141;
+	border-radius: 4px;
+	padding: 5px 10px;
+}
+
+button:hover:not(:disabled) {
+	background: #343434;
+}
+
+button:disabled {
+	opacity: 0.45;
+}
+
+button.primary {
+	padding: 9px 18px;
+}
+
+.app {
+	display: grid;
+	grid-template-rows: 38px 1fr 24px;
+	width: 100%;
+	height: 100%;
+}
+
+.toolbar,
+.statusbar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 0 10px;
+	background: #202020;
+}
+
+.toolbar {
+	border-bottom: 1px solid #353535;
+}
+
+.statusbar {
+	border-top: 1px solid #353535;
+	font-size: 12px;
+	color: #aaa;
+}
+
+.toolbar-spacer {
+	flex: 1;
+}
+
+.workspace-path {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: #aaa;
+	font-size: 12px;
+}
+
+.welcome {
+	display: grid;
+	place-content: center;
+	justify-items: center;
+	gap: 8px;
+	background: #181818;
+}
+
+.welcome h1 {
+	margin: 0;
+	font-size: 34px;
+}
+
+.welcome p {
+	margin: 0 0 16px;
+	color: #aaa;
+}
+
+.workspace {
+	display: grid;
+	grid-template-columns: minmax(180px, 260px) minmax(280px, 1fr) minmax(280px, 1fr);
+	min-width: 0;
+	min-height: 0;
+}
+
+.explorer,
+.editor-pane,
+.preview-pane {
+	min-width: 0;
+	min-height: 0;
+	overflow: hidden;
+	background: #181818;
+	border-right: 1px solid #333;
+}
+
+.preview-pane {
+	border-right: 0;
+}
+
+.pane-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 32px;
+	padding: 0 10px;
+	background: #202020;
+	border-bottom: 1px solid #333;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.dirty-mark {
+	color: #aaa;
+	font-size: 9px;
+}
+
+.tree {
+	height: calc(100% - 32px);
+	padding: 4px;
+	overflow: auto;
+}
+
+.tree-entry {
+	display: flex;
+	width: 100%;
+	gap: 4px;
+	align-items: center;
+	border: 0;
+	border-radius: 3px;
+	padding: 4px 6px;
+	background: transparent;
+	text-align: left;
+	white-space: nowrap;
+}
+
+.tree-entry:hover {
+	background: #292929;
+}
+
+.tree-entry.file {
+	color: #777;
+}
+
+.tree-icon {
+	width: 14px;
+	flex: 0 0 14px;
+	text-align: center;
+	color: #888;
+}
+
+.tree-children {
+	margin-left: 13px;
+	padding-left: 4px;
+	border-left: 1px solid #333;
+}
+
+.bootstrap-editor {
+	display: block;
+	width: 100%;
+	height: calc(100% - 32px);
+	padding: 14px;
+	resize: none;
+	border: 0;
+	outline: 0;
+	background: #111;
+	color: #ddd;
+	font: 14px/1.6 "Cascadia Mono", "Yu Gothic UI", Consolas, monospace;
+	tab-size: 4;
+}
+
+.markdown-preview {
+	height: calc(100% - 32px);
+	margin: 0;
+	padding: 20px 28px 80px;
+	overflow: auto;
+	line-height: 1.7;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3 {
+	line-height: 1.25;
+}
+
+.markdown-preview code {
+	font-family: "Cascadia Mono", Consolas, monospace;
+	background: #252525;
+	padding: 2px 4px;
+	border-radius: 3px;
+}
+
+.markdown-preview pre {
+	overflow: auto;
+	padding: 12px;
+	background: #111;
+	border: 1px solid #333;
+	border-radius: 4px;
+}
+
+.markdown-preview pre code {
+	padding: 0;
+	background: transparent;
+}
+
+.markdown-preview a {
+	color: #8ab4f8;
+}
+
+.empty-pane {
+	display: grid;
+	height: calc(100% - 32px);
+	place-items: center;
+	color: #777;
+}
