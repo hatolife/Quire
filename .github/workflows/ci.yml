@@ -69,9 +69,6 @@ jobs:
         working-directory: spikes/neovim-ui
         run: npm run build
 
-      - name: Check Tauri backend
-        run: cargo check --manifest-path spikes/neovim-ui/src-tauri/Cargo.toml
-
       - name: Build Windows executable
         run: cargo build --release --manifest-path spikes/neovim-ui/src-tauri/Cargo.toml
 
