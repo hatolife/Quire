@@ -327,7 +327,22 @@ EditorとPreviewのscroll同期について、単純なscroll比率ではなくM
 
 bootstrap textareaは本体から外し、Neovim Editor Adapterへ切り替えた。
 
-次は本体上でNeovim編集、IME、Preview更新、scroll同期、保存、pane resizeを実機確認する。
+本体上でNeovim編集、IME、Preview更新、scroll同期、保存、pane resizeまで実機確認し、概ね問題なしとの確認を得た。
+
+その後、Application Skeletonとして次を追加した。
+
+- Neovim process終了検出。
+- 同一Documentを開き直すNeovim再起動overlay。
+- restart時の古いRPC stream eventをgenerationで破棄する。
+- 300件固定長のapplication log ring buffer。
+- status barクリックで直近logを開くdrawer。
+- Workspace内relative imageをPreviewへ表示するasset bridge。
+- asset pathをRust側でcanonicalizeし、Workspace外への参照を拒否する。
+- frontendのWorkspace / Document / Settings / Log / Asset commandをtyped IPC wrapperへ集約する。
+- 未保存状態でWorkspaceを切り替える場合の確認。
+- 未保存状態でQuireを終了する場合の確認。
+
+これらの追加機能はWindows production buildをCIで確認し、最新artifactで実機確認する。
 
 ### 目的
 
@@ -522,25 +537,22 @@ CIやパッケージング機能の検証でSemVerが必須な場合だけ `v0.0
 
 ## 直近の次作業
 
-Milestone 2のApplication Skeletonを本体上で継続する。
+Milestone 2のApplication Skeletonは主要構成が揃った。
 
-次は次の順で進める。
+最新Windows artifactで次を確認する。
 
-1. 最新のQuire本体artifactをWindows実機で確認する。
-	- WorkspaceからMarkdownを開く。
-	- Neovimで通常編集する。
-	- 日本語IMEのpreedit / 変換確定。
-	- buffer変更がPreviewへ即時反映される。
-	- Editor→Preview / Preview→Editorのscroll同期。
-	- `Ctrl+S` と保存button。
-	- 外部変更Conflict。
-	- pane splitterのdrag resize。
-	- 再起動後にpane layoutが復元される。
-2. Neovim異常終了と再起動を本体Editor Adapterで扱う。
-3. Application Skeletonのloggingを追加する。
-4. PreviewのWorkspace内relative asset表示を実装する。
-5. Milestone 2の完了条件を満たしたらMilestone 3のVertical Sliceへ進む。
+1. Neovim Editorの既存操作が退行していない。
+2. status barクリックでlog drawerが開き、Workspace open / Document open / save / error等が記録される。
+3. Markdownのrelative imageがPreviewに表示される。
+	- 同じdirectoryの画像。
+	- subdirectoryの画像。
+	- `../images/foo.png` のようにWorkspace内を遡る画像。
+	- Workspace外へ出るpathは読み込まれない。
+4. pane layoutの保存・復元。
+5. 未保存状態で別Workspaceを開く場合に確認が出る。
+6. 未保存状態でWindowを閉じる場合に確認が出る。
+7. Neovim異常終了時に再起動UIが表示され、disk上のDocumentを開き直せる。
 
-Git Snapshot Isolation、External File Changes、Multi WebView、WebView2 ExtensionsはArchitecture Spikeで基本方式が成立済みである。
+実機確認後、Milestone 2を完了扱いにし、Milestone 3: Vertical Sliceへ進む。
 
-以後は必要になった時点で本体へ順次移植する。
+Milestone 3ではDocument create / rename / move / delete、file watcher、search、History Snapshot、Browser pane等を本体へ順次追加する。
