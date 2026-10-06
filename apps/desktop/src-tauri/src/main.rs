@@ -2,8 +2,10 @@ mod editor;
 mod logging;
 mod settings;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use quire_core::{Document, Workspace, WorkspaceEntry, WorkspaceInfo};
 use serde::Serialize;
+use std::path::Path;
 use tauri::ipc::Channel;
 use std::sync::Mutex;
 
@@ -43,6 +45,37 @@ fn document_save(relative_path: String, content: String, expected_revision: Stri
 	with_workspace(&state, |workspace| workspace.save_document(&relative_path, &content, &expected_revision).map_err(|error| error.to_string()))
 }
 
+#[tauri::command]
+fn asset_read(
+	document_relative_path: String,
+	source: String,
+	state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+	const MAX_PREVIEW_ASSET_BYTES: usize = 32 * 1024 * 1024;
+
+	let bytes = with_workspace(&state, |workspace| {
+		workspace.read_asset(&document_relative_path, &source).map_err(|error| error.to_string())
+	})?;
+	if bytes.len() > MAX_PREVIEW_ASSET_BYTES {
+		return Err(format!("Preview asset is too large: {source}"));
+	}
+	let mime = asset_mime(&source).ok_or_else(|| format!("Unsupported preview asset type: {source}"))?;
+	Ok(format!("data:{mime};base64,{}", BASE64.encode(bytes)))
+}
+
+fn asset_mime(source: &str) -> Option<&'static str> {
+	match Path::new(source).extension()?.to_str()?.to_ascii_lowercase().as_str() {
+		"png" => Some("image/png"),
+		"jpg" | "jpeg" => Some("image/jpeg"),
+		"gif" => Some("image/gif"),
+		"webp" => Some("image/webp"),
+		"bmp" => Some("image/bmp"),
+		"avif" => Some("image/avif"),
+		"svg" => Some("image/svg+xml"),
+		"ico" => Some("image/x-icon"),
+		_ => None,
+	}
+}
 
 #[tauri::command]
 fn editor_start_document(
@@ -162,6 +195,7 @@ fn main() {
 			workspace_list,
 			document_open,
 			document_save,
+			asset_read,
 			editor_start_document,
 			editor_input,
 			editor_resize,

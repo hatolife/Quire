@@ -9,6 +9,7 @@ publish = false
 tauri-build = { version = "2" }
 
 [dependencies]
+base64 = "0.22"
 quire-core = { path = "../../../crates/quire-core" }
 rmpv = "1"
 serde.workspace = true

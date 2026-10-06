@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import NeovimEditor from "./editor/NeovimEditor";
 
 type WorkspaceInfo = {
@@ -45,14 +45,36 @@ const markdown = new MarkdownIt({
 	typographer: false,
 });
 
-function renderPreview(source: string): string {
-	const environment = {};
-	const tokens = markdown.parse(source, environment);
+const PREVIEW_IMAGE_PLACEHOLDER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+function isLocalAssetSource(source: string): boolean {
+	if(!source || source.startsWith("/") || source.startsWith("\\")){ return false; }
+	if(source.startsWith("#") || source.startsWith("//")){ return false; }
+	return !/^[a-z][a-z0-9+.-]*:/i.test(source);
+}
+
+function decoratePreviewTokens(tokens: any[]) {
 	for(const token of tokens){
 		if(token.map && token.nesting === 1){
 			token.attrSet("data-source-line", String(token.map[0]));
 		}
+		if(token.type === "image"){
+			const source = token.attrGet("src");
+			if(source && isLocalAssetSource(source)){
+				token.attrSet("data-quire-asset", source);
+				token.attrSet("src", PREVIEW_IMAGE_PLACEHOLDER);
+			}
+		}
+		if(token.children){
+			decoratePreviewTokens(token.children);
+		}
 	}
+}
+
+function renderPreview(source: string): string {
+	const environment = {};
+	const tokens = markdown.parse(source, environment);
+	decoratePreviewTokens(tokens);
 	return markdown.renderer.render(tokens, markdown.options, environment);
 }
 
@@ -66,6 +88,7 @@ function App() {
 	let previewElement!: HTMLElement;
 	let suppressEditorViewport = false;
 	let suppressPreviewScroll = false;
+	const assetCache = new Map<string, Promise<string>>();
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
 	const [entries, setEntries] = createSignal<WorkspaceEntry[]>([]);
@@ -79,6 +102,49 @@ function App() {
 	const [logs, setLogs] = createSignal<LogEntry[]>([]);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
+
+	const decodeAssetSource = (source: string) => {
+		const pathOnly = source.split("#", 1)[0].split("?", 1)[0];
+		try{
+			return decodeURIComponent(pathOnly);
+		}catch{
+			return pathOnly;
+		}
+	};
+
+	const loadPreviewAsset = (documentRelativePath: string, source: string) => {
+		const decoded = decodeAssetSource(source);
+		const key = documentRelativePath + "\n" + decoded;
+		let pending = assetCache.get(key);
+		if(!pending){
+			pending = invoke<string>("asset_read", {
+				documentRelativePath,
+				source: decoded,
+			}).catch(error => {
+				assetCache.delete(key);
+				throw error;
+			});
+			assetCache.set(key, pending);
+		}
+		return pending;
+	};
+
+	const resolvePreviewAssets = async (documentRelativePath: string) => {
+		if(!previewElement){ return; }
+		const images = Array.from(previewElement.querySelectorAll<HTMLImageElement>("img[data-quire-asset]"));
+		await Promise.all(images.map(async image => {
+			const source = image.dataset.quireAsset;
+			if(!source){ return; }
+			try{
+				image.src = await loadPreviewAsset(documentRelativePath, source);
+				image.removeAttribute("data-quire-asset");
+			}catch(error){
+				image.alt = (image.alt ? image.alt + " — " : "") + "画像を読み込めません";
+				image.classList.add("preview-asset-error");
+				void appendLog("warn", "preview", "Asset load error: " + source + " / " + String(error));
+			}
+		}));
+	};
 
 	const appendLog = async (level: string, source: string, message: string) => {
 		try{
@@ -115,6 +181,13 @@ function App() {
 			setStatus("Log clear error: " + String(error));
 		}
 	};
+
+	createEffect(() => {
+		preview();
+		const relativePath = document()?.relativePath;
+		if(!relativePath){ return; }
+		requestAnimationFrame(() => { void resolvePreviewAssets(relativePath); });
+	});
 
 	const persistLayout = async () => {
 		try{
@@ -247,6 +320,7 @@ function App() {
 			const opened = await invoke<WorkspaceOpened>("workspace_open", { path: selected });
 			setWorkspace(opened.info);
 			setEntries(opened.entries);
+			assetCache.clear();
 			setDocument(null);
 			setDraft("");
 			updateStatus(opened.info.name + " を開きました", "info", "workspace");

@@ -323,3 +323,17 @@ button.primary {
 	padding: 12px;
 	color: #777;
 }
+
+.markdown-preview img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	margin: 1em 0;
+}
+
+.markdown-preview img.preview-asset-error {
+	min-width: 120px;
+	min-height: 32px;
+	border: 1px dashed #7a4b4b;
+	background: #241818;
+}

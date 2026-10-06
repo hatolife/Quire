@@ -128,6 +128,23 @@ impl Workspace {
 		Ok(path)
 	}
 
+	pub fn read_asset(&self, document_relative_path: &str, asset_relative_path: &str) -> Result<Vec<u8>, WorkspaceError> {
+		let document = self.document_path(document_relative_path)?;
+		let parent = document
+			.parent()
+			.ok_or_else(|| WorkspaceError::InvalidRelativePath(document_relative_path.to_string()))?;
+		let asset = Path::new(asset_relative_path);
+		if asset.is_absolute() {
+			return Err(WorkspaceError::InvalidRelativePath(asset_relative_path.to_string()));
+		}
+
+		let path = fs::canonicalize(parent.join(asset))?;
+		if !path.starts_with(&self.root) || !path.is_file() {
+			return Err(WorkspaceError::InvalidRelativePath(asset_relative_path.to_string()));
+		}
+		Ok(fs::read(path)?)
+	}
+
 	pub fn read_document(&self, relative_path: &str) -> Result<Document, WorkspaceError> {
 		let path = self.document_path(relative_path)?;
 		let bytes = fs::read(&path)?;
@@ -208,6 +225,37 @@ mod tests {
 
 		assert!(matches!(
 			workspace.list_directory("../"),
+			Err(WorkspaceError::InvalidRelativePath(_))
+		));
+	}
+
+	#[test]
+	fn read_asset_allows_parent_segments_inside_workspace() {
+		let temp = tempfile::tempdir().unwrap();
+		let workspace_root = temp.path().join("workspace");
+		fs::create_dir_all(workspace_root.join("notes")).unwrap();
+		fs::create_dir_all(workspace_root.join("images")).unwrap();
+		fs::write(workspace_root.join("notes").join("note.md"), "# Note").unwrap();
+		fs::write(workspace_root.join("images").join("photo.png"), b"png").unwrap();
+
+		let workspace = Workspace::open(&workspace_root).unwrap();
+		let bytes = workspace.read_asset("notes/note.md", "../images/photo.png").unwrap();
+
+		assert_eq!(bytes, b"png");
+	}
+
+	#[test]
+	fn read_asset_rejects_escape_from_workspace() {
+		let temp = tempfile::tempdir().unwrap();
+		let workspace_root = temp.path().join("workspace");
+		fs::create_dir_all(&workspace_root).unwrap();
+		fs::write(workspace_root.join("note.md"), "# Note").unwrap();
+		fs::write(temp.path().join("outside.png"), b"outside").unwrap();
+
+		let workspace = Workspace::open(&workspace_root).unwrap();
+
+		assert!(matches!(
+			workspace.read_asset("note.md", "../outside.png"),
 			Err(WorkspaceError::InvalidRelativePath(_))
 		));
 	}
