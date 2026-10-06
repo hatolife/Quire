@@ -63,6 +63,28 @@ Quireの最初の完成条件は「Markdownを表示できた」ではない。
 
 ## Milestone 1: Architecture Spikes
 
+### 現在の進捗
+
+2026-10-06時点で、5種類すべてのSpikeについて検証コードを作成し、Windows CIでbuildまたは自動検証が成功している。
+
+|Spike|自動検証|Windows build|実機UX確認|現状|
+|---|---|---|---|---|
+|Neovim Embed|成功|成功|一部未確認|RPC / ext_linegrid / UTF-8入力の基礎成立。Neovim UI SpikeでGUI検証を継続する。|
+|Multi WebView Layout|対象外|成功|未確認|同一Window内child WebView方式を実装。resize / focus / DPI / 複数pane等の実機確認待ち。|
+|WebView2 Extensions|対象外|成功|未確認|Manifest V3 extension読込構成を実装。content script / service worker / storageの実機確認待ち。|
+|Git Snapshot Isolation|成功|成功|不要|一時index + Quire専用ref方式でHEAD / branch / user index / staged状態を保持できることを自動確認済み。|
+|External File Changes|成功|成功|追加確認あり|create / modify / rename / move / delete / bulk変更 / Git checkout / dirty conflictをWindows CIで自動確認済み。|
+
+CI確認基準commit:
+
+```text
+e56770fa550957de720e3e8fb412e282a4b81214
+```
+
+この時点ではMilestone 1完了とはしない。
+
+Neovim UI、Multi WebView、WebView2 Extensionsは、Windows実機で日常操作上の成立性を確認してから採用判断する。
+
 ### 目的
 
 Quireの根幹になる技術が実用レベルで成立するか確認する。
@@ -417,16 +439,34 @@ CIやパッケージング機能の検証でSemVerが必須な場合だけ `v0.0
 
 ## 直近の次作業
 
-Milestone 0完了後はMilestone 1へ進む。
+Milestone 1の5種類のSpikeは実装済みで、Windows CI上のbuild / 自動検証も通っている。
 
-最初にNeovim Embed Spikeを作る。
+次は次の順で進める。
 
-ただし実装開始前に最低限のrepository規約を追加する。
+1. Neovim UI SpikeをWindows実機で確認する。
+	- 30分程度のMarkdown編集。
+	- 日本語IME。
+	- 全角文字、絵文字。
+	- mouse。
+	- resize。
+	- DPI scaling。
+	- 異常終了と再起動。
+2. Multi WebView Layout SpikeをWindows実機で確認する。
+	- pane resize。
+	- focus。
+	- keyboard shortcut競合。
+	- session。
+	- DPI scaling。
+	- 複数Browser pane。
+3. WebView2 Extensions SpikeをWindows実機で確認する。
+	- Manifest V3 content script。
+	- service worker。
+	- `storage.local`。
+	- reload / 再起動後の維持。
+	- browser UI依存extensionの制約。
+4. 実機結果を各 `docs/spikes/` 配下へ記録し、採用判断を確定する。
+5. Milestone 1の採用判断が揃ったらMilestone 2: Application Skeletonへ進む。
 
-- `README.md`。
-- `AGENTS.md`。
-- build/run手順。
-- source treeの初期構成。
-- formatting/lint/test方針。
+Git Snapshot IsolationとExternal File Changesについては、基本方式の自動検証が成立済みである。
 
-規約作成そのものを長期化させず、Neovim Spikeへ進む。
+ただし各READMEに列挙したedge caseはApplication Skeleton以降も継続して追加検証する。
