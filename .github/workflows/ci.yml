@@ -147,3 +147,20 @@ jobs:
           name: quire-webview2-extensions-spike-windows
           if-no-files-found: error
           path: spikes/webview2-extensions/src-tauri/target/release/quire-webview2-extensions-spike.exe
+
+  git-snapshot-isolation-spike:
+    name: Git snapshot isolation spike
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/git-snapshot-isolation -> target
+
+      - name: Run Git snapshot isolation spike
+        run: cargo run --release --manifest-path spikes/git-snapshot-isolation/Cargo.toml
