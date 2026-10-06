@@ -5,6 +5,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import NeovimEditor from "./editor/NeovimEditor";
 import {
 	assetRead,
+	documentCreate,
+	documentDelete,
+	documentMove,
 	documentOpen,
 	editorSave,
 	editorSetTopLine,
@@ -328,6 +331,79 @@ function App() {
 		return workspaceList(relativePath);
 	};
 
+	const refreshExplorer = async () => {
+		try{
+			setEntries(await workspaceList(""));
+		}catch(error){
+			updateStatus("Explorer refresh error: " + String(error), "error", "explorer");
+		}
+	};
+
+	const normalizeMarkdownPath = (value: string) => {
+		const trimmed = value.trim().replace(/\\/g, "/");
+		if(!trimmed){ return ""; }
+		return /\.md(?:own)?$/i.test(trimmed) ? trimmed : trimmed + ".md";
+	};
+
+	const createDocument = async () => {
+		if(!workspace()){ return; }
+		const input = window.prompt("Workspaceからの相対pathを入力してください。", "新規.md");
+		if(input === null){ return; }
+		const relativePath = normalizeMarkdownPath(input);
+		if(!relativePath){ return; }
+		try{
+			const created = await documentCreate(relativePath);
+			await refreshExplorer();
+			setDocument(created);
+			setDraft(contentForEditor(created.content));
+			updateStatus(created.relativePath + " を作成しました", "info", "document");
+		}catch(error){
+			updateStatus("Document create error: " + String(error), "error", "document");
+		}
+	};
+
+	const moveCurrentDocument = async () => {
+		const current = document();
+		if(!current || dirty()){ 
+			if(dirty()){ updateStatus("移動・名前変更の前に保存してください。", "warn", "document"); }
+			return;
+		}
+		const input = window.prompt("移動先をWorkspaceからの相対pathで入力してください。", current.relativePath);
+		if(input === null){ return; }
+		const relativePath = normalizeMarkdownPath(input);
+		if(!relativePath || relativePath === current.relativePath){ return; }
+		try{
+			const moved = await documentMove(current.relativePath, relativePath, current.revision);
+			assetCache.clear();
+			await refreshExplorer();
+			setDocument(moved);
+			setDraft(contentForEditor(moved.content));
+			updateStatus(current.relativePath + " → " + moved.relativePath, "info", "document");
+		}catch(error){
+			updateStatus("Document move error: " + String(error), "error", "document");
+		}
+	};
+
+	const deleteCurrentDocument = async () => {
+		const current = document();
+		if(!current){ return; }
+		if(dirty()){
+			updateStatus("削除の前に保存するか変更を破棄してください。", "warn", "document");
+			return;
+		}
+		if(!window.confirm(current.relativePath + " を削除しますか？\nこの操作はまだHistoryからの復元対象ではありません。")){ return; }
+		try{
+			await documentDelete(current.relativePath, current.revision);
+			setDocument(null);
+			setDraft("");
+			assetCache.clear();
+			await refreshExplorer();
+			updateStatus(current.relativePath + " を削除しました", "info", "document");
+		}catch(error){
+			updateStatus("Document delete error: " + String(error), "error", "document");
+		}
+	};
+
 	const openDocument = async (relativePath: string) => {
 		if(dirty() && !window.confirm("未保存の変更があります。破棄して別の文書を開きますか？")){ return; }
 		try{
@@ -386,7 +462,12 @@ function App() {
 					style={"grid-template-columns: " + explorerWidth() + "px 4px minmax(280px, " + editorRatio() + "fr) 4px minmax(280px, " + (1 - editorRatio()) + "fr)"}
 				>
 					<aside class="explorer">
-						<div class="pane-title">Explorer</div>
+						<div class="pane-title explorer-title">
+							<span>Explorer</span>
+							<span class="toolbar-spacer" />
+							<button class="pane-action" title="新規Markdown" onClick={() => void createDocument()}>＋</button>
+							<button class="pane-action" title="再読込" onClick={() => void refreshExplorer()}>↻</button>
+						</div>
 						<div class="tree">
 							<For each={entries()}>
 								{entry => <TreeEntry entry={entry} loadDirectory={loadDirectory} openDocument={openDocument} />}
@@ -401,8 +482,13 @@ function App() {
 					/>
 					<section class="editor-pane">
 						<div class="pane-title">
-							<span>{document()?.relativePath ?? "Editor"}</span>
+							<span class="pane-document-path">{document()?.relativePath ?? "Editor"}</span>
 							<Show when={dirty()}><span class="dirty-mark">●</span></Show>
+							<span class="toolbar-spacer" />
+							<Show when={document()}>
+								<button class="pane-action" title="移動・名前変更" disabled={dirty()} onClick={() => void moveCurrentDocument()}>移動</button>
+								<button class="pane-action danger" title="削除" disabled={dirty()} onClick={() => void deleteCurrentDocument()}>削除</button>
+							</Show>
 						</div>
 						<Show
 							when={document()?.relativePath}

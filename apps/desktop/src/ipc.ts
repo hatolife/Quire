@@ -47,6 +47,18 @@ export function documentOpen(relativePath: string) {
 	return invoke<Document>("document_open", { relativePath });
 }
 
+export function documentCreate(relativePath: string) {
+	return invoke<Document>("document_create", { relativePath });
+}
+
+export function documentMove(fromRelativePath: string, toRelativePath: string, expectedRevision: string) {
+	return invoke<Document>("document_move", { fromRelativePath, toRelativePath, expectedRevision });
+}
+
+export function documentDelete(relativePath: string, expectedRevision: string) {
+	return invoke<void>("document_delete", { relativePath, expectedRevision });
+}
+
 export function editorSave(expectedRevision: string) {
 	return invoke<Document>("editor_save", { expectedRevision });
 }

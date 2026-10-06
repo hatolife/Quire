@@ -337,3 +337,33 @@ button.primary {
 	border: 1px dashed #7a4b4b;
 	background: #241818;
 }
+
+.explorer-title {
+	gap: 4px;
+}
+
+.pane-action {
+	flex: 0 0 auto;
+	min-width: 24px;
+	height: 24px;
+	padding: 1px 6px;
+	border-color: transparent;
+	background: transparent;
+	font-size: 11px;
+}
+
+.pane-action:hover:not(:disabled) {
+	border-color: #414141;
+	background: #303030;
+}
+
+.pane-action.danger:hover:not(:disabled) {
+	background: #4a2424;
+}
+
+.pane-document-path {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

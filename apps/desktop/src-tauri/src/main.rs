@@ -46,6 +46,44 @@ fn document_save(relative_path: String, content: String, expected_revision: Stri
 }
 
 #[tauri::command]
+fn document_create(relative_path: String, state: tauri::State<'_, AppState>) -> Result<Document, String> {
+	with_workspace(&state, |workspace| {
+		workspace.create_document(&relative_path, "").map_err(|error| error.to_string())
+	})
+}
+
+#[tauri::command]
+fn document_move(
+	from_relative_path: String,
+	to_relative_path: String,
+	expected_revision: String,
+	state: tauri::State<'_, AppState>,
+	editor_state: tauri::State<'_, editor::EditorState>,
+) -> Result<Document, String> {
+	editor::stop(&editor_state)?;
+	with_workspace(&state, |workspace| {
+		workspace
+			.move_document(&from_relative_path, &to_relative_path, Some(&expected_revision))
+			.map_err(|error| error.to_string())
+	})
+}
+
+#[tauri::command]
+fn document_delete(
+	relative_path: String,
+	expected_revision: String,
+	state: tauri::State<'_, AppState>,
+	editor_state: tauri::State<'_, editor::EditorState>,
+) -> Result<(), String> {
+	editor::stop(&editor_state)?;
+	with_workspace(&state, |workspace| {
+		workspace
+			.delete_document(&relative_path, Some(&expected_revision))
+			.map_err(|error| error.to_string())
+	})
+}
+
+#[tauri::command]
 fn asset_read(
 	document_relative_path: String,
 	source: String,
@@ -195,6 +233,9 @@ fn main() {
 			workspace_list,
 			document_open,
 			document_save,
+			document_create,
+			document_move,
+			document_delete,
 			asset_read,
 			editor_start_document,
 			editor_input,
