@@ -31,15 +31,97 @@ const markdown = new MarkdownIt({
 	typographer: false,
 });
 
+function renderPreview(source: string): string {
+	const environment = {};
+	const tokens = markdown.parse(source, environment);
+	for(const token of tokens){
+		if(token.map && token.nesting === 1){
+			token.attrSet("data-source-line", String(token.map[0]));
+		}
+	}
+	return markdown.renderer.render(tokens, markdown.options, environment);
+}
+
 function App() {
+	let editorElement!: HTMLTextAreaElement;
+	let previewElement!: HTMLElement;
+	let suppressEditorScroll = false;
+	let suppressPreviewScroll = false;
+
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
 	const [entries, setEntries] = createSignal<WorkspaceEntry[]>([]);
 	const [document, setDocument] = createSignal<Document | null>(null);
 	const [draft, setDraft] = createSignal("");
 	const [status, setStatus] = createSignal("Workspaceを開いてください");
 	const [saving, setSaving] = createSignal(false);
-	const preview = createMemo(() => markdown.render(draft()));
+	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== document()!.content);
+
+	const editorLineHeight = () => {
+		const style = getComputedStyle(editorElement);
+		const lineHeight = Number.parseFloat(style.lineHeight);
+		return Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 22.4;
+	};
+
+	const previewAnchors = () => {
+		return Array.from(previewElement.querySelectorAll<HTMLElement>("[data-source-line]"))
+			.map(element => ({
+				line: Number.parseInt(element.dataset.sourceLine ?? "0", 10),
+				top: element.offsetTop,
+			}))
+			.filter(anchor => Number.isFinite(anchor.line))
+			.sort((left, right) => left.line - right.line);
+	};
+
+	const previewTopForLine = (line: number) => {
+		const anchors = previewAnchors();
+		if(anchors.length === 0){ return 0; }
+		if(line <= anchors[0].line){ return anchors[0].top; }
+
+		for(let index = 0; index + 1 < anchors.length; ++index){
+			const current = anchors[index];
+			const next = anchors[index + 1];
+			if(line <= next.line){
+				const lineSpan = Math.max(1, next.line - current.line);
+				const ratio = Math.max(0, Math.min(1, (line - current.line) / lineSpan));
+				return current.top + (next.top - current.top) * ratio;
+			}
+		}
+		return anchors[anchors.length - 1].top;
+	};
+
+	const sourceLineForPreviewTop = (top: number) => {
+		const anchors = previewAnchors();
+		if(anchors.length === 0){ return 0; }
+		if(top <= anchors[0].top){ return anchors[0].line; }
+
+		for(let index = 0; index + 1 < anchors.length; ++index){
+			const current = anchors[index];
+			const next = anchors[index + 1];
+			if(top <= next.top){
+				const heightSpan = Math.max(1, next.top - current.top);
+				const ratio = Math.max(0, Math.min(1, (top - current.top) / heightSpan));
+				return current.line + (next.line - current.line) * ratio;
+			}
+		}
+		return anchors[anchors.length - 1].line;
+	};
+
+	const handleEditorScroll = () => {
+		if(suppressEditorScroll || !previewElement){ return; }
+		const line = editorElement.scrollTop / editorLineHeight();
+		suppressPreviewScroll = true;
+		previewElement.scrollTop = previewTopForLine(line);
+		requestAnimationFrame(() => { suppressPreviewScroll = false; });
+	};
+
+	const handlePreviewScroll = () => {
+		if(suppressPreviewScroll || !editorElement){ return; }
+		const line = sourceLineForPreviewTop(previewElement.scrollTop);
+		suppressEditorScroll = true;
+		editorElement.scrollTop = line * editorLineHeight();
+		requestAnimationFrame(() => { suppressEditorScroll = false; });
+	};
 
 	const chooseWorkspace = async () => {
 		const selected = await open({
@@ -139,9 +221,11 @@ function App() {
 							fallback={<div class="empty-pane">左からMarkdownを選択してください。</div>}
 						>
 							<textarea
+								ref={editorElement}
 								class="bootstrap-editor"
 								value={draft()}
 								onInput={event => setDraft(event.currentTarget.value)}
+								onScroll={handleEditorScroll}
 								spellcheck={false}
 							/>
 						</Show>
@@ -152,7 +236,12 @@ function App() {
 							when={document()}
 							fallback={<div class="empty-pane">Preview</div>}
 						>
-							<article class="markdown-preview" innerHTML={preview()} />
+							<article
+								ref={previewElement}
+								class="markdown-preview"
+								innerHTML={preview()}
+								onScroll={handlePreviewScroll}
+							/>
 						</Show>
 					</section>
 				</div>
