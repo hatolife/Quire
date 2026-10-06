@@ -1,43 +1,25 @@
-import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
 import { createEffect, createMemo, createSignal, For, onMount, Show } from "solid-js";
 import NeovimEditor from "./editor/NeovimEditor";
-
-type WorkspaceInfo = {
-	root: string;
-	name: string;
-};
-
-type WorkspaceEntry = {
-	name: string;
-	relativePath: string;
-	kind: "directory" | "markdown" | "file";
-};
-
-type WorkspaceOpened = {
-	info: WorkspaceInfo;
-	entries: WorkspaceEntry[];
-};
-
-type Document = {
-	relativePath: string;
-	content: string;
-	revision: string;
-};
-
-type DesktopSettings = {
-	explorerWidth: number;
-	editorRatio: number;
-};
-
-type LogEntry = {
-	id: number;
-	timestampMs: number;
-	level: string;
-	source: string;
-	message: string;
-};
+import {
+	assetRead,
+	documentOpen,
+	editorSave,
+	editorSetTopLine,
+	logAppend,
+	logClear,
+	logRecent,
+	settingsLoad,
+	settingsSave,
+	workspaceList,
+	workspaceOpen,
+	type DesktopSettings,
+	type Document,
+	type LogEntry,
+	type WorkspaceEntry,
+	type WorkspaceInfo,
+} from "./ipc";
 
 const markdown = new MarkdownIt({
 	html: false,
@@ -117,10 +99,7 @@ function App() {
 		const key = documentRelativePath + "\n" + decoded;
 		let pending = assetCache.get(key);
 		if(!pending){
-			pending = invoke<string>("asset_read", {
-				documentRelativePath,
-				source: decoded,
-			}).catch(error => {
+			pending = assetRead(documentRelativePath, decoded).catch(error => {
 				assetCache.delete(key);
 				throw error;
 			});
@@ -148,7 +127,7 @@ function App() {
 
 	const appendLog = async (level: string, source: string, message: string) => {
 		try{
-			await invoke("log_append", { level, source, message });
+			await logAppend(level, source, message);
 		}catch{
 			// Logging must never break the primary UI flow.
 		}
@@ -161,7 +140,7 @@ function App() {
 
 	const refreshLogs = async () => {
 		try{
-			setLogs(await invoke<LogEntry[]>("log_recent"));
+			setLogs(await logRecent());
 		}catch(error){
 			setStatus("Log read error: " + String(error));
 		}
@@ -175,7 +154,7 @@ function App() {
 
 	const clearLogs = async () => {
 		try{
-			await invoke("log_clear");
+			await logClear();
 			setLogs([]);
 		}catch(error){
 			setStatus("Log clear error: " + String(error));
@@ -191,19 +170,17 @@ function App() {
 
 	const persistLayout = async () => {
 		try{
-			await invoke("settings_save", {
-				settings: {
-					explorerWidth: explorerWidth(),
-					editorRatio: editorRatio(),
-				} satisfies DesktopSettings,
-			});
+			await settingsSave({
+				explorerWidth: explorerWidth(),
+				editorRatio: editorRatio(),
+			} satisfies DesktopSettings);
 		}catch(error){
 			updateStatus("Settings save error: " + String(error), "error", "settings");
 		}
 	};
 
 	onMount(() => {
-		void invoke<DesktopSettings>("settings_load")
+		void settingsLoad()
 			.then(settings => {
 				setExplorerWidth(Math.max(180, Math.min(420, settings.explorerWidth)));
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
@@ -267,7 +244,7 @@ function App() {
 		if(suppressPreviewScroll || !document()){ return; }
 		const line = Math.max(0, Math.floor(sourceLineForPreviewTop(previewElement.scrollTop)));
 		suppressEditorViewport = true;
-		void invoke("editor_set_top_line", { line })
+		void editorSetTopLine(line)
 			.catch(error => updateStatus("Editor viewport error: " + String(error), "error", "editor"))
 			.finally(() => requestAnimationFrame(() => { suppressEditorViewport = false; }));
 	};
@@ -317,7 +294,7 @@ function App() {
 		});
 		if(typeof selected !== "string"){ return; }
 		try{
-			const opened = await invoke<WorkspaceOpened>("workspace_open", { path: selected });
+			const opened = await workspaceOpen(selected);
 			setWorkspace(opened.info);
 			setEntries(opened.entries);
 			assetCache.clear();
@@ -330,13 +307,13 @@ function App() {
 	};
 
 	const loadDirectory = async (relativePath: string) => {
-		return invoke<WorkspaceEntry[]>("workspace_list", { relativePath });
+		return workspaceList(relativePath);
 	};
 
 	const openDocument = async (relativePath: string) => {
 		if(dirty() && !window.confirm("未保存の変更があります。破棄して別の文書を開きますか？")){ return; }
 		try{
-			const opened = await invoke<Document>("document_open", { relativePath });
+			const opened = await documentOpen(relativePath);
 			setDocument(opened);
 			setDraft(contentForEditor(opened.content));
 			updateStatus(relativePath, "info", "document");
@@ -350,9 +327,7 @@ function App() {
 		if(!current || !dirty() || saving()){ return; }
 		setSaving(true);
 		try{
-			const saved = await invoke<Document>("editor_save", {
-				expectedRevision: current.revision,
-			});
+			const saved = await editorSave(current.revision);
 			setDocument(saved);
 			setDraft(contentForEditor(saved.content));
 			updateStatus(saved.relativePath + " を保存しました", "info", "save");
