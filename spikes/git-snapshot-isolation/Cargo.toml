@@ -1,0 +1,9 @@
+[package]
+name = "quire-git-snapshot-isolation-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+tempfile = "3"
