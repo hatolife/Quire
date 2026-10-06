@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Quire WebView2 Extension Spike",
+  "version": "0.0.0",
+  "description": "Verifies Manifest V3 content scripts, service workers and storage in Quire's WebView2 spike.",
+  "permissions": [
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://example.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}

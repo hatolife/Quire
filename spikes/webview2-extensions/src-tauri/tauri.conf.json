@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Quire WebView2 Extensions Spike",
+  "version": "0.0.0",
+  "identifier": "life.hato.quire.webview2extensionsspike",
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}
