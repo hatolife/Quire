@@ -8,11 +8,18 @@ Quireは、文書編集、検索、リンク、履歴、Web参照等を一つの
 
 ## Current phase
 
-現在は初期技術検証段階。
+現在は Milestone 2: Application Skeleton の本体実装段階。
 
-完成UIを先に作らず、`docs/initial-concept/milestones.md` のArchitecture Spikesを優先する。
+Architecture Spikesで検証した方式を、`crates/quire-core` と `apps/desktop` の本体構成へ移植している。
 
-特に最初はNeovim Embedを検証する。
+現在の優先事項:
+
+- Neovim Editor Adapterを本体へ統合する。
+- Workspace / Documentの通常ファイル正本を維持する。
+- Preview、pane layout、settings、logging等のApplication Skeletonを成立させる。
+- Spike特有の近道をそのまま本体へ持ち込まない。
+
+Spikeは新たな高リスク技術を検証する場合、または既存方式を再検証する場合に使用する。
 
 ## Development rules
 
@@ -30,16 +37,23 @@ Quireは、文書編集、検索、リンク、履歴、Web参照等を一つの
 
 ## Repository layout
 
-現時点の予定:
+現在の基本構成:
 
 ```text
+Cargo.toml
+crates/
+  quire-core/
+apps/
+  desktop/
+    src/
+    src-tauri/
 docs/
   initial-concept/
   spikes/
 spikes/
-src/
-src-tauri/
 ```
+
+`quire-core` はTauri非依存の中核libraryとし、desktop側はApplication/UI境界とする。
 
 存在しないディレクトリを仕様確定済みとみなさない。
 
