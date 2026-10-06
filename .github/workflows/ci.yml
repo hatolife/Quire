@@ -45,9 +45,31 @@ jobs:
         working-directory: spikes/neovim-ui
         run: npm install
 
+      - name: Audit runtime dependencies
+        working-directory: spikes/neovim-ui
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Audit all dependencies
+        working-directory: spikes/neovim-ui
+        continue-on-error: true
+        run: npm audit --audit-level=critical
+
       - name: Build frontend
         working-directory: spikes/neovim-ui
         run: npm run build
 
       - name: Check Tauri backend
         run: cargo check --manifest-path spikes/neovim-ui/src-tauri/Cargo.toml
+
+      - name: Build Windows executable
+        run: cargo build --release --manifest-path spikes/neovim-ui/src-tauri/Cargo.toml
+
+      - name: Upload Neovim UI spike
+        uses: actions/upload-artifact@v4
+        with:
+          name: quire-neovim-ui-spike-windows
+          if-no-files-found: error
+          path: |
+            spikes/neovim-ui/src-tauri/target/release/quire-neovim-ui-spike.exe
+            spikes/neovim-ui/package-lock.json
