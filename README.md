@@ -6,16 +6,19 @@ Quireは、ローカルの通常ファイルを正本とし、編集・検索・
 
 ## Status
 
-現在は初期構想と技術検証の段階です。
+現在は Milestone 2: Application Skeleton の本体実装段階です。
 
-完成品として利用できる状態ではありません。
+完成品として利用できる状態ではありませんが、初期Architecture Spikesを経て、Windows向けTauri/Solidアプリ本体の実装へ移行しています。
 
-実装前に、アーキテクチャへ大きく影響する以下の項目を優先して検証します。
+現在の本体では、通常フォルダをWorkspaceとして開き、Markdownを選択・編集・Preview・保存する縦切り実装を進めています。
 
-- Neovim `--embed` と `ext_linegrid`。
+主要なArchitecture Spike:
+
+- Neovim `--embed` + `ext_linegrid`。
 - Tauri上の複数WebView / Browser pane。
 - WebView2 browser extensions。
 - 既存Git repositoryを汚さない履歴Snapshot。
+- 外部ファイル変更の検出と競合保護。
 
 ## Design documents
 
