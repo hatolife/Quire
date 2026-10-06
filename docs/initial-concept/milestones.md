@@ -248,6 +248,58 @@ Indexが追従すること。
 
 ## Milestone 2: Application Skeleton
 
+### 現在の進捗
+
+2026-10-06に本体実装を開始した。
+
+初期構成:
+
+```text
+Cargo.toml
+crates/
+└─ quire-core/
+apps/
+└─ desktop/
+   ├─ src/
+   └─ src-tauri/
+```
+
+`quire-core` はTauriへ依存しないRust library crateとし、Workspace / Document等の中核処理を置く。
+
+desktop側はTauri/Solidの薄いApplication/UI境界とする。
+
+最初の縦切りとして次を実装済み。
+
+- native directory pickerからWorkspaceを開く。
+- Workspace直下およびdirectoryのlazy listing。
+- Markdown Documentを開く。
+- bootstrap text editorで編集する。
+- markdown-itによるPreview。
+- Document読込時のBLAKE3 revisionを保持する。
+- 保存時にdisk側revisionを再確認する。
+- 外部変更があればConflictとして保存を拒否する。
+- 同一directory内の一時fileを経由して保存する。
+- `.git/` をExplorer表示対象から除外する。
+- relative pathのparent traversalを拒否する。
+
+`quire-core` のunit testとWindows production buildはCIで成功している。
+
+確認基準commit:
+
+```text
+9e8d2def690a3648d3393bf5134c3e93bdc6ae56
+```
+
+Windows artifact:
+
+```text
+quire-desktop-windows-v0.0.1.20261006161401.9e8d2de
+```
+
+現時点のtextarea editorはApplication Skeletonを先に通すためのbootstrap実装であり、最終Editorではない。
+
+次にNeovim UI Spikeで成立した実装をEditor Adapter境界へ移植する。
+
 ### 目的
 
 捨てる検証コードから、本体アーキテクチャへ移行する。
