@@ -54,7 +54,7 @@ function createGrid(width: number, height: number): Grid {
 
 function rgbToCss(value: number, fallback: string): string {
 	if(value < 0){ return fallback; }
-	return \`#\${value.toString(16).padStart(6, "0").slice(-6)}\`;
+	return `#${value.toString(16).padStart(6, "0").slice(-6)}`;
 }
 
 function App() {
@@ -78,7 +78,7 @@ function App() {
 		try{
 			await invoke("editor_input", { text });
 		}catch(error){
-			setStatus(\`input error: \${String(error)}\`);
+			setStatus(`input error: ${String(error)}`);
 		}
 	};
 
@@ -87,14 +87,14 @@ function App() {
 		const dpr = window.devicePixelRatio || 1;
 		const width = Math.max(1, Math.floor(rect.width));
 		const height = Math.max(1, Math.floor(rect.height));
-		canvas.style.width = \`\${width}px\`;
-		canvas.style.height = \`\${height}px\`;
+		canvas.style.width = `${width}px`;
+		canvas.style.height = `${height}px`;
 		canvas.width = Math.max(1, Math.floor(width * dpr));
 		canvas.height = Math.max(1, Math.floor(height * dpr));
 		const ctx = canvas.getContext("2d");
 		if(!ctx){ return; }
 		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-		ctx.font = \`\${FONT_SIZE}px \${FONT_FAMILY}\`;
+		ctx.font = `${FONT_SIZE}px ${FONT_FAMILY}`;
 		cellWidth = Math.max(1, Math.ceil(ctx.measureText("M").width));
 	};
 
@@ -106,7 +106,7 @@ function App() {
 		try{
 			await invoke("editor_resize", { width: cols, height: rows });
 		}catch(error){
-			setStatus(\`resize error: \${String(error)}\`);
+			setStatus(`resize error: ${String(error)}`);
 		}
 	};
 
@@ -129,9 +129,9 @@ function App() {
 	const positionInput = () => {
 		const left = Math.max(0, cursor.col * cellWidth);
 		const top = Math.max(0, cursor.row * CELL_HEIGHT);
-		input.style.left = \`\${left}px\`;
-		input.style.top = \`\${top}px\`;
-		input.style.height = \`\${CELL_HEIGHT}px\`;
+		input.style.left = `${left}px`;
+		input.style.top = `${top}px`;
+		input.style.height = `${CELL_HEIGHT}px`;
 	};
 
 	const renderGrid = () => {
@@ -155,8 +155,8 @@ function App() {
 					ctx.fillRect(x, y, cellWidth, CELL_HEIGHT);
 				}
 				if(cell.text){
-					const fontPrefix = \`\${attrs.italic ? "italic " : ""}\${attrs.bold ? "bold " : ""}\`;
-					ctx.font = \`\${fontPrefix}\${FONT_SIZE}px \${FONT_FAMILY}\`;
+					const fontPrefix = `${attrs.italic ? "italic " : ""}${attrs.bold ? "bold " : ""}`;
+					ctx.font = `${fontPrefix}${FONT_SIZE}px ${FONT_FAMILY}`;
 					ctx.fillStyle = rgbToCss(foreground, "#ffffff");
 					ctx.fillText(cell.text, x, y + 2);
 					if(attrs.underline){
@@ -271,7 +271,7 @@ function App() {
 		if(event.shiftKey && special[event.key]){ modifiers.push("S"); }
 		if(modifiers.length){
 			const body = special[event.key] ? special[event.key].slice(1, -1) : event.key;
-			key = \`<\${modifiers.join("-")}-\${body}>\`;
+			key = `<${modifiers.join("-")}-${body}>`;
 		}
 		return key;
 	};
@@ -298,7 +298,7 @@ function App() {
 				for(const event of message.events){ applyEvent(event); }
 				setStatus("connected");
 			}else{
-				setStatus(\`closed: \${message.message}\`);
+				setStatus(`closed: ${message.message}`);
 			}
 		};
 		try{
@@ -308,7 +308,7 @@ function App() {
 			setStatus("connected");
 			input.focus();
 		}catch(error){
-			setStatus(\`start error: \${String(error)}\`);
+			setStatus(`start error: ${String(error)}`);
 		}
 		resizeObserver = new ResizeObserver(() => {
 			ensureCanvasSize();
