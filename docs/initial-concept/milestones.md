@@ -296,6 +296,21 @@ Windows artifact:
 quire-desktop-windows-v0.0.1.20261006161401.9e8d2de
 ```
 
+Windows実機で次を確認した。
+
+- Quire本体の起動。
+- native pickerからWorkspaceを開く。
+- Explorer表示とdirectory展開。
+- Markdown Documentを開く。
+- 編集とPreview追従。
+- 保存。
+- 再起動後の保存内容維持。
+- Quireで開いた後に外部Editorで同じDocumentを書き換えた場合、`Document changed outside Quire` として保存を拒否し、外部変更を黙って上書きしない。
+
+この最初のWorkspace縦切りは成立した。
+
+EditorとPreviewのscroll同期について、単純なscroll比率ではなくMarkdown blockのsource lineを基準に同期する実装を追加した。表、見出し、code block等でPreview側の高さが変わる場合も、隣接source anchor間を補間する。
+
 現時点のtextarea editorはApplication Skeletonを先に通すためのbootstrap実装であり、最終Editorではない。
 
 次にNeovim UI Spikeで成立した実装をEditor Adapter境界へ移植する。
