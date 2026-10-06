@@ -53,7 +53,7 @@ Rustだけですべてを実装することは目的にしない。
 │                                              │
 │ Layout  Panels  Commands  Dialogs  Theme    │
 └──────────────────────┬───────────────────────┘
-                       │ typed IPC / events
+                       │ commands / channels
 ┌──────────────────────▼───────────────────────┐
 │              Application Layer               │
 │ Rust                                         │
@@ -464,11 +464,30 @@ FrontendとRust間のIPCは型を明示する。
 
 自由形式JSONをアプリ全体で投げ合う設計にはしない。
 
-要求、応答、eventを区別する。
+通信を用途で分ける。
 
-大量のEditor redraw等、高頻度通信は通常command APIとは別に性能検証する。
+- 単発の要求と応答はTauri Commandを使用する。
+- Editor redraw等の継続的なストリームはTauri Channelを使用する。
+- 少量のグローバル通知等、複数consumerへ配信する意味がある場合だけTauri Eventを使用する。
 
-必要ならbinary payloadや専用channelを使う。
+Tauri公式文書ではEvent systemは低遅延・高スループット向けではなく、ストリーミングデータにはChannelを使用するよう明示されている。
+
+Neovimの`redraw`は高頻度かつ順序保証が重要なため、通常Eventへ載せない。
+
+Phase 2のNeovim UI SpikeではFrontend側で`Channel`を生成してRust commandへ渡し、Rust側の`tauri::ipc::Channel<T>`からredraw batchを順序付きで送信する方式を第一候補とする。
+
+`flush`までのredrawを中間描画せず、Frontend側でbatchを適用してから画面へ反映する。
+
+必要になった場合はChannel payloadのJSON serialization costも計測し、binary payloadを含む別方式と比較する。
+
+### 参考
+
+- Tauri v2 Calling the Frontend
+  - https://v2.tauri.app/develop/calling-frontend/
+- Tauri v2 Calling Rust
+  - https://v2.tauri.app/develop/calling-rust/
+- `tauri::ipc::Channel`
+  - https://docs.rs/tauri/latest/tauri/ipc/struct.Channel.html
 
 ## Logging
 
