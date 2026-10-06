@@ -114,6 +114,7 @@ function App() {
 	let reconcileTimer: number | undefined;
 	let searchTimer: number | undefined;
 	let settingsTimer: number | undefined;
+	let autoSnapshotTimer: number | undefined;
 	let watchGeneration = 0;
 	const assetCache = new Map<string, Promise<string>>();
 
@@ -254,6 +255,14 @@ function App() {
 		const ok = await createHistorySnapshot(reason);
 		if(ok){ return true; }
 		return window.confirm("Safety Snapshotを作成できませんでした。履歴なしで操作を続行しますか？");
+	};
+
+	const scheduleAutoSnapshot = (relativePath: string) => {
+		if(autoSnapshotTimer !== undefined){ window.clearTimeout(autoSnapshotTimer); }
+		autoSnapshotTimer = window.setTimeout(() => {
+			autoSnapshotTimer = undefined;
+			void createHistorySnapshot("Auto save " + relativePath);
+		}, 5000);
 	};
 
 	const toggleHistory = () => {
@@ -408,6 +417,7 @@ function App() {
 		if(reconcileTimer !== undefined){ window.clearTimeout(reconcileTimer); }
 		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
 		if(settingsTimer !== undefined){ window.clearTimeout(settingsTimer); }
+		if(autoSnapshotTimer !== undefined){ window.clearTimeout(autoSnapshotTimer); }
 		void workspaceWatchStop();
 	});
 
@@ -739,6 +749,7 @@ function App() {
 			setDraft(contentForEditor(saved.content));
 			setExternalConflict(false);
 			updateStatus(saved.relativePath + " を保存しました", "info", "save");
+			scheduleAutoSnapshot(saved.relativePath);
 		}catch(error){
 			updateStatus("Save error: " + String(error), "error", "save");
 		}finally{
