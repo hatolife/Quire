@@ -215,13 +215,17 @@ function App() {
 	};
 
 	const applyScroll = (event: Extract<UiEvent, { type: "grid_scroll" }>) => {
-		if(event.grid !== 1 || event.cols !== 0){ return; }
+		if(event.grid !== 1){ return; }
 		const before = grid.cells.map(row => row.map(cell => ({ ...cell })));
 		for(let row = event.top; row < event.bot; ++row){
-			const sourceRow = row + event.rows;
-			if(sourceRow < event.top || sourceRow >= event.bot){ continue; }
 			for(let col = event.left; col < event.right; ++col){
-				grid.cells[row][col] = { ...before[sourceRow][col] };
+				const sourceRow = row + event.rows;
+				const sourceCol = col + event.cols;
+				if(sourceRow >= event.top && sourceRow < event.bot && sourceCol >= event.left && sourceCol < event.right){
+					grid.cells[row][col] = { ...before[sourceRow][sourceCol] };
+				}else{
+					grid.cells[row][col] = blankCell();
+				}
 			}
 		}
 	};
