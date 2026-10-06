@@ -518,27 +518,34 @@ subsystem単位で再起動可能な構造を目指す。
 
 ## Repository structure
 
-初期候補:
+Architecture Spikesの結果を受け、Milestone 2開始時点でCargo workspaceを採用した。
+
+現在の基本構成:
 
 ```text
 Quire/
-├─ src/                    # Solid / TypeScript
-├─ src-tauri/
-│  └─ src/
-│     ├─ app/
-│     ├─ workspace/
-│     ├─ filesystem/
-│     ├─ history/
-│     ├─ index/
-│     ├─ editor/
-│     └─ browser/
-├─ docs/
-└─ tests/
+├─ Cargo.toml
+├─ crates/
+│  └─ quire-core/          # Tauri非依存の中核library
+├─ apps/
+│  └─ desktop/
+│     ├─ src/              # Solid / TypeScript
+│     └─ src-tauri/        # desktop Application / Tauri境界
+├─ spikes/                 # 技術検証。workspace本体からexclude
+└─ docs/
 ```
 
-最初からcrateを細分化しすぎない。
+`quire-core` とdesktopを分離する。
 
-責務が実際に分かれてからworkspace crate等へ分割する。
+これは別process化を意味しない。
+
+中核処理はまずRust library crateとして分離し、不要なIPC、process lifecycle、version同期を増やさない。
+
+将来、独立processにする明確な理由が生じた場合にも境界を移行しやすい構造を保つ。
+
+今後Editor、Browser、History、Index等についても、実際に責務と再利用境界が確立したものからcrate/moduleを分離する。
+
+最初から機械的に大量のcrateへ細分化しない。
 
 ## 技術スパイクの優先順位
 
