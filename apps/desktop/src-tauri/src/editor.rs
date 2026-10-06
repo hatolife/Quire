@@ -427,7 +427,7 @@ pub fn start_document(
 		(Value::from("ext_linegrid"), Value::from(true)),
 	]);
 	process.request("nvim_ui_attach", vec![Value::from(80), Value::from(24), options])?;
-	process.request("nvim_buf_attach", vec![Value::from(0), Value::from(false), Value::Map(vec![])])?;
+	process.request("nvim_buf_attach", vec![Value::from(0), Value::from(true), Value::Map(vec![])])?;
 
 	*slot = Some(process);
 	Ok(())
