@@ -84,3 +84,42 @@ jobs:
           path: |
             spikes/neovim-ui/src-tauri/target/release/quire-neovim-ui-spike.exe
             spikes/neovim-ui/package-lock.json
+
+  multi-webview-spike-build:
+    name: Multi WebView spike build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/multi-webview/src-tauri -> target
+
+      - name: Install frontend dependencies
+        working-directory: spikes/multi-webview
+        run: npm install
+
+      - name: Build frontend
+        working-directory: spikes/multi-webview
+        run: npm run build
+
+      - name: Build Windows executable
+        run: cargo build --release --manifest-path spikes/multi-webview/src-tauri/Cargo.toml
+
+      - name: Upload Multi WebView spike
+        uses: actions/upload-artifact@v7
+        with:
+          name: quire-multi-webview-spike-windows
+          if-no-files-found: error
+          path: |
+            spikes/multi-webview/src-tauri/target/release/quire-multi-webview-spike.exe
+            spikes/multi-webview/package-lock.json
