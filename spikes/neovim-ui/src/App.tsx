@@ -77,6 +77,7 @@ function App() {
 	let resizeObserver: ResizeObserver | undefined;
 	let composing = false;
 	let started = false;
+	let mouseDownButton: string | null = null;
 	let cellWidth = 9;
 	let grid = createGrid(80, 24);
 	let cursor = { grid: 1, row: 0, col: 0 };
@@ -98,6 +99,78 @@ function App() {
 		}catch(error){
 			setStatus(`input error: ${String(error)}`);
 		}
+	};
+
+	const mouseModifier = (event: MouseEvent): string => {
+		let modifier = "";
+		if(event.shiftKey){ modifier += "S-"; }
+		if(event.ctrlKey){ modifier += "C-"; }
+		if(event.altKey){ modifier += "A-"; }
+		return modifier;
+	};
+
+	const mousePosition = (event: MouseEvent): { row: number; col: number } | null => {
+		const rect = host.getBoundingClientRect();
+		const col = Math.floor((event.clientX - rect.left) / cellWidth);
+		const row = Math.floor((event.clientY - rect.top) / CELL_HEIGHT);
+		if(row < 0 || row >= grid.height || col < 0 || col >= grid.width){ return null; }
+		return { row, col };
+	};
+
+	const mouseButton = (button: number): string | null => {
+		switch(button){
+		case 0: return "left";
+		case 1: return "middle";
+		case 2: return "right";
+		default: return null;
+		}
+	};
+
+	const sendMouse = async (button: string, action: string, event: MouseEvent) => {
+		const position = mousePosition(event);
+		if(!position){ return; }
+		try{
+			await invoke("editor_mouse", { button, action, modifier: mouseModifier(event), ...position });
+		}catch(error){
+			setStatus(`mouse error: ${String(error)}`);
+		}
+	};
+
+	const handlePointerDown = (event: PointerEvent) => {
+		const button = mouseButton(event.button);
+		if(!button){ return; }
+		event.preventDefault();
+		input.focus();
+		mouseDownButton = button;
+		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		void sendMouse(button, "press", event);
+	};
+
+	const handlePointerMove = (event: PointerEvent) => {
+		if(!mouseDownButton){ return; }
+		event.preventDefault();
+		void sendMouse(mouseDownButton, "drag", event);
+	};
+
+	const handlePointerUp = (event: PointerEvent) => {
+		const button = mouseDownButton ?? mouseButton(event.button);
+		if(!button){ return; }
+		event.preventDefault();
+		void sendMouse(button, "release", event);
+		mouseDownButton = null;
+		const target = event.currentTarget as HTMLElement;
+		if(target.hasPointerCapture(event.pointerId)){ target.releasePointerCapture(event.pointerId); }
+	};
+
+	const handleWheel = (event: WheelEvent) => {
+		event.preventDefault();
+		let action: string;
+		if(Math.abs(event.deltaX) > Math.abs(event.deltaY)){
+			action = event.deltaX < 0 ? "left" : "right";
+		}else{
+			action = event.deltaY < 0 ? "up" : "down";
+		}
+		void sendMouse("wheel", action, event);
 	};
 
 	const ensureCanvasSize = () => {
@@ -393,7 +466,11 @@ function App() {
 			<div
 				ref={host}
 				class="editor"
-				onMouseDown={() => input.focus()}
+				onPointerDown={event => handlePointerDown(event as PointerEvent)}
+				onPointerMove={event => handlePointerMove(event as PointerEvent)}
+				onPointerUp={event => handlePointerUp(event as PointerEvent)}
+				onWheel={event => handleWheel(event as WheelEvent)}
+				onContextMenu={event => event.preventDefault()}
 			>
 				<canvas ref={canvas} />
 				<textarea
