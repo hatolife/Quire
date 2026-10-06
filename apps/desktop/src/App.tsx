@@ -31,6 +31,14 @@ type DesktopSettings = {
 	editorRatio: number;
 };
 
+type LogEntry = {
+	id: number;
+	timestampMs: number;
+	level: string;
+	source: string;
+	message: string;
+};
+
 const markdown = new MarkdownIt({
 	html: false,
 	linkify: true,
@@ -67,8 +75,46 @@ function App() {
 	const [saving, setSaving] = createSignal(false);
 	const [explorerWidth, setExplorerWidth] = createSignal(260);
 	const [editorRatio, setEditorRatio] = createSignal(0.5);
+	const [logOpen, setLogOpen] = createSignal(false);
+	const [logs, setLogs] = createSignal<LogEntry[]>([]);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
+
+	const appendLog = async (level: string, source: string, message: string) => {
+		try{
+			await invoke("log_append", { level, source, message });
+		}catch{
+			// Logging must never break the primary UI flow.
+		}
+	};
+
+	const updateStatus = (message: string, level = "info", source = "app") => {
+		setStatus(message);
+		void appendLog(level, source, message);
+	};
+
+	const refreshLogs = async () => {
+		try{
+			setLogs(await invoke<LogEntry[]>("log_recent"));
+		}catch(error){
+			setStatus("Log read error: " + String(error));
+		}
+	};
+
+	const toggleLogs = () => {
+		const next = !logOpen();
+		setLogOpen(next);
+		if(next){ void refreshLogs(); }
+	};
+
+	const clearLogs = async () => {
+		try{
+			await invoke("log_clear");
+			setLogs([]);
+		}catch(error){
+			setStatus("Log clear error: " + String(error));
+		}
+	};
 
 	const persistLayout = async () => {
 		try{
@@ -79,7 +125,7 @@ function App() {
 				} satisfies DesktopSettings,
 			});
 		}catch(error){
-			setStatus("Settings save error: " + String(error));
+			updateStatus("Settings save error: " + String(error), "error", "settings");
 		}
 	};
 
@@ -89,7 +135,7 @@ function App() {
 				setExplorerWidth(Math.max(180, Math.min(420, settings.explorerWidth)));
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
 			})
-			.catch(error => setStatus("Settings load error: " + String(error)));
+			.catch(error => updateStatus("Settings load error: " + String(error), "error", "settings"));
 	});
 
 	const previewAnchors = () => {
@@ -149,7 +195,7 @@ function App() {
 		const line = Math.max(0, Math.floor(sourceLineForPreviewTop(previewElement.scrollTop)));
 		suppressEditorViewport = true;
 		void invoke("editor_set_top_line", { line })
-			.catch(error => setStatus("Editor viewport error: " + String(error)))
+			.catch(error => updateStatus("Editor viewport error: " + String(error), "error", "editor"))
 			.finally(() => requestAnimationFrame(() => { suppressEditorViewport = false; }));
 	};
 
@@ -203,9 +249,9 @@ function App() {
 			setEntries(opened.entries);
 			setDocument(null);
 			setDraft("");
-			setStatus(opened.info.name + " を開きました");
+			updateStatus(opened.info.name + " を開きました", "info", "workspace");
 		}catch(error){
-			setStatus("Workspace open error: " + String(error));
+			updateStatus("Workspace open error: " + String(error), "error", "workspace");
 		}
 	};
 
@@ -219,9 +265,9 @@ function App() {
 			const opened = await invoke<Document>("document_open", { relativePath });
 			setDocument(opened);
 			setDraft(contentForEditor(opened.content));
-			setStatus(relativePath);
+			updateStatus(relativePath, "info", "document");
 		}catch(error){
-			setStatus("Document open error: " + String(error));
+			updateStatus("Document open error: " + String(error), "error", "document");
 		}
 	};
 
@@ -235,9 +281,9 @@ function App() {
 			});
 			setDocument(saved);
 			setDraft(contentForEditor(saved.content));
-			setStatus(saved.relativePath + " を保存しました");
+			updateStatus(saved.relativePath + " を保存しました", "info", "save");
 		}catch(error){
-			setStatus("Save error: " + String(error));
+			updateStatus("Save error: " + String(error), "error", "save");
 		}finally{
 			setSaving(false);
 		}
@@ -301,7 +347,7 @@ function App() {
 									relativePath={relativePath}
 									onTextChange={setDraft}
 									onViewportLineChange={handleEditorViewportLine}
-									onStatus={setStatus}
+									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") || message.toLowerCase().includes("closed") ? "error" : "info", "editor")}
 									onSave={() => void saveDocument()}
 								/>
 							)}
@@ -330,7 +376,34 @@ function App() {
 				</div>
 			</Show>
 
-			<footer class="statusbar">
+			<Show when={logOpen()}>
+				<div class="log-drawer">
+					<div class="log-drawer-header">
+						<strong>Recent logs</strong>
+						<span>{logs().length} / 300</span>
+						<span class="toolbar-spacer" />
+						<button onClick={() => void refreshLogs()}>更新</button>
+						<button onClick={() => void clearLogs()}>クリア</button>
+						<button onClick={() => setLogOpen(false)}>閉じる</button>
+					</div>
+					<div class="log-list">
+						<For each={logs()}>
+							{entry => (
+								<div class={"log-entry " + entry.level}>
+									<time>{new Date(entry.timestampMs).toLocaleTimeString()}</time>
+									<span class="log-source">{entry.source}</span>
+									<span>{entry.message}</span>
+								</div>
+							)}
+						</For>
+						<Show when={logs().length === 0}>
+							<div class="log-empty">ログはありません。</div>
+						</Show>
+					</div>
+				</div>
+			</Show>
+
+			<footer class="statusbar statusbar-clickable" onClick={toggleLogs} title="クリックで直近ログを表示">
 				<span>{status()}</span>
 				<span class="toolbar-spacer" />
 				<span>Milestone 2 / Application Skeleton</span>

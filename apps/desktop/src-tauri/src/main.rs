@@ -1,4 +1,5 @@
 mod editor;
+mod logging;
 mod settings;
 
 use quire_core::{Document, Workspace, WorkspaceEntry, WorkspaceInfo};
@@ -122,6 +123,26 @@ fn settings_save(settings: settings::DesktopSettings, app: tauri::AppHandle) -> 
 	settings::save(&app, &settings)
 }
 
+#[tauri::command]
+fn log_append(
+	level: String,
+	source: String,
+	message: String,
+	state: tauri::State<'_, logging::LogState>,
+) -> Result<(), String> {
+	state.push(level, source, message)
+}
+
+#[tauri::command]
+fn log_recent(state: tauri::State<'_, logging::LogState>) -> Result<Vec<logging::LogEntry>, String> {
+	state.recent()
+}
+
+#[tauri::command]
+fn log_clear(state: tauri::State<'_, logging::LogState>) -> Result<(), String> {
+	state.clear()
+}
+
 fn with_workspace<T>(state: &tauri::State<'_, AppState>, operation: impl FnOnce(&Workspace) -> Result<T, String>) -> Result<T, String> {
 	let current = state.workspace.lock().map_err(|_| "Workspace state lock failed.".to_string())?;
 	let workspace = current.as_ref().ok_or_else(|| "Workspace is not open.".to_string())?;
@@ -135,6 +156,7 @@ fn main() {
 			workspace: Mutex::new(None),
 		})
 		.manage(editor::EditorState::default())
+		.manage(logging::LogState::default())
 		.invoke_handler(tauri::generate_handler![
 			workspace_open,
 			workspace_list,
@@ -150,6 +172,9 @@ fn main() {
 			editor_stop,
 			settings_load,
 			settings_save,
+			log_append,
+			log_recent,
+			log_clear,
 		])
 		.run(tauri::generate_context!())
 		.expect("failed to run Quire");

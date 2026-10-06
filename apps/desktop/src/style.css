@@ -254,3 +254,72 @@ button.primary {
 	place-items: center;
 	color: #777;
 }
+
+.statusbar-clickable {
+	cursor: pointer;
+	user-select: none;
+}
+
+.statusbar-clickable:hover {
+	background: #272727;
+}
+
+.log-drawer {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 24px;
+	z-index: 20;
+	display: grid;
+	grid-template-rows: 36px minmax(100px, 240px);
+	background: #181818;
+	border-top: 1px solid #444;
+	box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.log-drawer-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 10px;
+	background: #202020;
+	border-bottom: 1px solid #333;
+	font-size: 12px;
+}
+
+.log-list {
+	overflow: auto;
+	padding: 4px 0;
+	font: 12px/1.5 "Cascadia Mono", Consolas, monospace;
+}
+
+.log-entry {
+	display: grid;
+	grid-template-columns: 86px 76px 1fr;
+	gap: 8px;
+	padding: 3px 10px;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.log-entry:hover {
+	background: #242424;
+}
+
+.log-entry.error {
+	color: #ffb4ab;
+}
+
+.log-entry.warn {
+	color: #ffd8a8;
+}
+
+.log-entry time,
+.log-source {
+	color: #888;
+}
+
+.log-empty {
+	padding: 12px;
+	color: #777;
+}
