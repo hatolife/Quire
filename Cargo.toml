@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+	"crates/quire-core",
+	"apps/desktop/src-tauri",
+]
+exclude = [
+	"spikes/neovim-embed",
+	"spikes/neovim-ui/src-tauri",
+	"spikes/multi-webview/src-tauri",
+	"spikes/webview2-extensions/src-tauri",
+	"spikes/git-snapshot-isolation",
+	"spikes/external-file-changes",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
