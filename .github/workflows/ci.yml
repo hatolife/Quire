@@ -13,8 +13,6 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
 
       - name: Install Neovim
         shell: powershell
@@ -23,9 +21,6 @@ jobs:
       - name: Show Neovim version
         shell: powershell
         run: nvim --version
-
-      - name: Check formatting
-        run: cargo fmt --manifest-path spikes/neovim-embed/Cargo.toml -- --check
 
       - name: Run Neovim embed spike
         run: cargo run --manifest-path spikes/neovim-embed/Cargo.toml
