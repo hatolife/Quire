@@ -26,3 +26,28 @@ jobs:
 
       - name: Run Neovim embed spike
         run: cargo run --manifest-path spikes/neovim-embed/Cargo.toml
+
+  neovim-ui-spike-build:
+    name: Neovim UI spike build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: spikes/neovim-ui
+        run: npm install
+
+      - name: Build frontend
+        working-directory: spikes/neovim-ui
+        run: npm run build
+
+      - name: Check Tauri backend
+        run: cargo check --manifest-path spikes/neovim-ui/src-tauri/Cargo.toml
