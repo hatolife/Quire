@@ -1,0 +1,25 @@
+{
+  "name": "quire-multi-webview-spike",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "solid-js": "1.9.15"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.0.0",
+    "vite-plugin-solid": "^2.11.0"
+  },
+  "overrides": {
+    "seroval": "1.6.8",
+    "seroval-plugins": "1.6.8"
+  }
+}
