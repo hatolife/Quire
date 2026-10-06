@@ -479,6 +479,25 @@ pub fn current_document(state: &EditorState) -> Result<String, String> {
 	Ok(process.relative_path.clone())
 }
 
+pub fn top_line(state: &EditorState) -> Result<u64, String> {
+	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
+	let process = slot.as_mut().ok_or_else(|| "Editor is not running.".to_string())?;
+	let value = process.request("nvim_eval", vec![Value::from("winsaveview().topline")])?;
+	let one_based = value_u64(&value).ok_or_else(|| "Neovim returned an invalid topline.".to_string())?;
+	Ok(one_based.saturating_sub(1))
+}
+
+pub fn set_top_line(line: u64, state: &EditorState) -> Result<(), String> {
+	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
+	let process = slot.as_mut().ok_or_else(|| "Editor is not running.".to_string())?;
+	let one_based = line.saturating_add(1);
+	process.request(
+		"nvim_command",
+		vec![Value::from(format!("call winrestview({{'topline': {one_based}}})"))],
+	)?;
+	Ok(())
+}
+
 pub fn stop(state: &EditorState) -> Result<(), String> {
 	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
 	if let Some(mut process) = slot.take() {
