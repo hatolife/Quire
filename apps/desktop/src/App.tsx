@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import BrowserPane from "./browser/BrowserPane";
 import NeovimEditor from "./editor/NeovimEditor";
 import {
 	assetRead,
@@ -137,6 +138,7 @@ function App() {
 	const [historyBusy, setHistoryBusy] = createSignal(false);
 	const [snapshots, setSnapshots] = createSignal<Snapshot[]>([]);
 	const [settingsReady, setSettingsReady] = createSignal(false);
+	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
@@ -860,32 +862,57 @@ function App() {
 						onPointerDown={event => beginEditorPreviewResize(event as PointerEvent)}
 					/>
 					<section class="preview-pane">
-						<div class="pane-title">Preview</div>
-						<Show
-							when={document()}
-							fallback={<div class="empty-pane">Preview</div>}
-						>
-							<div class="preview-scroll" ref={previewElement} onScroll={handlePreviewScroll}>
-								<article
-									class="markdown-preview"
-									innerHTML={preview()}
-									onClick={event => void handlePreviewClick(event as MouseEvent)}
-								/>
-								<Show when={backlinks().length > 0}>
-									<section class="backlinks">
-										<h3>Backlinks</h3>
-										<For each={backlinks()}>
-											{backlink => (
-												<button class="backlink" onClick={() => void openDocument(backlink.sourcePath, backlink.line)}>
-													<span>{backlink.sourcePath}:{backlink.line}</span>
-													<small>{backlink.preview}</small>
-												</button>
-											)}
-										</For>
-									</section>
+						<div class="pane-title right-pane-title">
+							<button
+								class="pane-tab"
+								classList={{ active: rightPaneMode() === "preview" }}
+								onClick={() => setRightPaneMode("preview")}
+							>
+								Preview
+							</button>
+							<button
+								class="pane-tab"
+								classList={{ active: rightPaneMode() === "browser" }}
+								onClick={() => setRightPaneMode("browser")}
+							>
+								Browser
+							</button>
+						</div>
+						<div class="right-pane-content">
+							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "preview" }}>
+								<Show
+									when={document()}
+									fallback={<div class="empty-pane">Preview</div>}
+								>
+									<div class="preview-scroll" ref={previewElement} onScroll={handlePreviewScroll}>
+										<article
+											class="markdown-preview"
+											innerHTML={preview()}
+											onClick={event => void handlePreviewClick(event as MouseEvent)}
+										/>
+										<Show when={backlinks().length > 0}>
+											<section class="backlinks">
+												<h3>Backlinks</h3>
+												<For each={backlinks()}>
+													{backlink => (
+														<button class="backlink" onClick={() => void openDocument(backlink.sourcePath, backlink.line)}>
+															<span>{backlink.sourcePath}:{backlink.line}</span>
+															<small>{backlink.preview}</small>
+														</button>
+													)}
+												</For>
+											</section>
+										</Show>
+									</div>
 								</Show>
 							</div>
-						</Show>
+							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
+								<BrowserPane
+									active={rightPaneMode() === "browser"}
+									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
+								/>
+							</div>
+						</div>
 					</section>
 				</div>
 			</Show>

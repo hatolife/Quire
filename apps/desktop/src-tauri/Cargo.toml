@@ -14,6 +14,6 @@ notify = "8.2"
 quire-core = { path = "../../../crates/quire-core" }
 rmpv = "1"
 serde.workspace = true
-tauri = { version = "2" }
+tauri = { version = "2", features = ["unstable"] }
 tauri-plugin-dialog = "2"
 toml = "0.8"
