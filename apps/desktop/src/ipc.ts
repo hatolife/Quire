@@ -39,6 +39,12 @@ export type Backlink = {
 	preview: string;
 };
 
+export type Snapshot = {
+	id: string;
+	timestamp: number;
+	message: string;
+};
+
 export type DesktopSettings = {
 	explorerWidth: number;
 	editorRatio: number;
@@ -124,6 +130,18 @@ export function logRecent() {
 
 export function logClear() {
 	return invoke<void>("log_clear");
+}
+
+export function historyCreateSnapshot(message: string) {
+	return invoke<Snapshot>("history_create_snapshot", { message });
+}
+
+export function historyList(limit = 100) {
+	return invoke<Snapshot[]>("history_list", { limit });
+}
+
+export function historyRestoreFile(snapshotId: string, relativePath: string, expectedRevision?: string) {
+	return invoke<Document>("history_restore_file", { snapshotId, relativePath, expectedRevision });
 }
 
 export function assetRead(documentRelativePath: string, source: string) {

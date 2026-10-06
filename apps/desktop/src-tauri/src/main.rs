@@ -4,10 +4,11 @@ mod settings;
 mod watcher;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use quire_core::{Backlink, Document, SearchHit, Workspace, WorkspaceEntry, WorkspaceInfo};
+use quire_core::{Backlink, Document, HistoryStore, SearchHit, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
 use serde::Serialize;
 use std::path::Path;
 use tauri::ipc::Channel;
+use tauri::Manager;
 use std::sync::Mutex;
 
 struct AppState {
@@ -256,6 +257,55 @@ fn log_clear(state: tauri::State<'_, logging::LogState>) -> Result<(), String> {
 	state.clear()
 }
 
+#[tauri::command]
+fn history_create_snapshot(
+	message: String,
+	app: tauri::AppHandle,
+	state: tauri::State<'_, AppState>,
+) -> Result<Snapshot, String> {
+	let store = history_store(&app, &state)?;
+	store.create_snapshot(&message).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn history_list(
+	limit: usize,
+	app: tauri::AppHandle,
+	state: tauri::State<'_, AppState>,
+) -> Result<Vec<Snapshot>, String> {
+	let store = history_store(&app, &state)?;
+	store.list_snapshots(limit).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn history_restore_file(
+	snapshot_id: String,
+	relative_path: String,
+	expected_revision: Option<String>,
+	app: tauri::AppHandle,
+	state: tauri::State<'_, AppState>,
+	editor_state: tauri::State<'_, editor::EditorState>,
+) -> Result<Document, String> {
+	editor::stop(&editor_state)?;
+	let store = history_store(&app, &state)?;
+	store
+		.restore_file(&snapshot_id, &relative_path, expected_revision.as_deref())
+		.map_err(|error| error.to_string())?;
+	with_workspace(&state, |workspace| workspace.read_document(&relative_path).map_err(|error| error.to_string()))
+}
+
+fn history_store(app: &tauri::AppHandle, state: &tauri::State<'_, AppState>) -> Result<HistoryStore, String> {
+	let (root, workspace_id) = with_workspace(state, |workspace| {
+		Ok((std::path::PathBuf::from(workspace.info().root), workspace.local_id()))
+	})?;
+	let data = app
+		.path()
+		.app_local_data_dir()
+		.map_err(|error| format!("Failed to resolve Quire app data directory: {error}"))?;
+	let git_dir = data.join("workspaces").join(workspace_id).join("history.git");
+	HistoryStore::open(root, git_dir).map_err(|error| error.to_string())
+}
+
 fn with_workspace<T>(state: &tauri::State<'_, AppState>, operation: impl FnOnce(&Workspace) -> Result<T, String>) -> Result<T, String> {
 	let current = state.workspace.lock().map_err(|_| "Workspace state lock failed.".to_string())?;
 	let workspace = current.as_ref().ok_or_else(|| "Workspace is not open.".to_string())?;
@@ -299,6 +349,9 @@ fn main() {
 			log_append,
 			log_recent,
 			log_clear,
+			history_create_snapshot,
+			history_list,
+			history_restore_file,
 		])
 		.run(tauri::generate_context!())
 		.expect("failed to run Quire");

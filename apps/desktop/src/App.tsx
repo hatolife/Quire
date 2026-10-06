@@ -14,6 +14,9 @@ import {
 	documentResolveWikiLink,
 	editorSave,
 	editorSetTopLine,
+	historyCreateSnapshot,
+	historyList,
+	historyRestoreFile,
 	logAppend,
 	logClear,
 	logRecent,
@@ -29,6 +32,7 @@ import {
 	type Document,
 	type LogEntry,
 	type SearchHit,
+	type Snapshot,
 	type WorkspaceEntry,
 	type WorkspaceInfo,
 	type WorkspaceWatchMessage,
@@ -129,6 +133,9 @@ function App() {
 	const [searching, setSearching] = createSignal(false);
 	const [initialEditorLine, setInitialEditorLine] = createSignal<number | undefined>();
 	const [backlinks, setBacklinks] = createSignal<Backlink[]>([]);
+	const [historyOpen, setHistoryOpen] = createSignal(false);
+	const [historyBusy, setHistoryBusy] = createSignal(false);
+	const [snapshots, setSnapshots] = createSignal<Snapshot[]>([]);
 	const [settingsReady, setSettingsReady] = createSignal(false);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
@@ -206,6 +213,75 @@ function App() {
 			setLogs([]);
 		}catch(error){
 			setStatus("Log clear error: " + String(error));
+		}
+	};
+
+	const refreshHistory = async () => {
+		if(!workspace()){
+			setSnapshots([]);
+			return;
+		}
+		setHistoryBusy(true);
+		try{
+			setSnapshots(await historyList());
+		}catch(error){
+			setSnapshots([]);
+			updateStatus("History error: " + String(error), "error", "history");
+		}finally{
+			setHistoryBusy(false);
+		}
+	};
+
+	const createHistorySnapshot = async (message = "Manual snapshot") => {
+		if(!workspace()){ return false; }
+		setHistoryBusy(true);
+		try{
+			const snapshot = await historyCreateSnapshot(message);
+			updateStatus("Snapshot created: " + snapshot.id.slice(0, 7), "info", "history");
+			if(historyOpen()){ await refreshHistory(); }
+			return true;
+		}catch(error){
+			updateStatus("Snapshot error: " + String(error), "error", "history");
+			return false;
+		}finally{
+			setHistoryBusy(false);
+		}
+	};
+
+	const createSafetySnapshot = async (reason: string) => {
+		const ok = await createHistorySnapshot(reason);
+		if(ok){ return true; }
+		return window.confirm("Safety Snapshotを作成できませんでした。履歴なしで操作を続行しますか？");
+	};
+
+	const toggleHistory = () => {
+		const next = !historyOpen();
+		setHistoryOpen(next);
+		if(next){ void refreshHistory(); }
+	};
+
+	const restoreCurrentDocument = async (snapshot: Snapshot) => {
+		const current = document();
+		if(!current || dirty()){
+			updateStatus("History復元の前に現在の変更を保存してください。", "warn", "history");
+			return;
+		}
+		if(!window.confirm(snapshot.message + "\n" + new Date(snapshot.timestamp * 1000).toLocaleString() + "\n\n" + current.relativePath + " をこのSnapshotへ復元しますか？")){ return; }
+		setHistoryBusy(true);
+		try{
+			await createHistorySnapshot("Before restore " + current.relativePath);
+			const restored = await historyRestoreFile(snapshot.id, current.relativePath, current.revision);
+			setDocument(restored);
+			setDraft(contentForEditor(restored.content));
+			setExternalConflict(false);
+			setEditorSession(value => value + 1);
+			assetCache.clear();
+			void refreshBacklinks(restored.relativePath);
+			updateStatus("Historyから復元しました: " + restored.relativePath, "info", "history");
+		}catch(error){
+			updateStatus("History restore error: " + String(error), "error", "history");
+		}finally{
+			setHistoryBusy(false);
 		}
 	};
 
@@ -563,6 +639,7 @@ function App() {
 		const relativePath = normalizeMarkdownPath(input);
 		if(!relativePath || relativePath === current.relativePath){ return; }
 		try{
+			if(!await createSafetySnapshot("Before move " + current.relativePath)){ return; }
 			const moved = await documentMove(current.relativePath, relativePath, current.revision);
 			assetCache.clear();
 			await refreshExplorer();
@@ -583,8 +660,9 @@ function App() {
 			updateStatus("削除の前に保存するか変更を破棄してください。", "warn", "document");
 			return;
 		}
-		if(!window.confirm(current.relativePath + " を削除しますか？\nこの操作はまだHistoryからの復元対象ではありません。")){ return; }
+		if(!window.confirm(current.relativePath + " を削除しますか？\n削除前にSafety Snapshotを作成します。")){ return; }
 		try{
+			if(!await createSafetySnapshot("Before delete " + current.relativePath)){ return; }
 			await documentDelete(current.relativePath, current.revision);
 			setDocument(null);
 			setDraft("");
@@ -673,6 +751,10 @@ function App() {
 				<button onClick={() => void chooseWorkspace()}>Workspaceを開く</button>
 				<Show when={workspace()}>{value => <span class="workspace-path">{value().root}</span>}</Show>
 				<span class="toolbar-spacer" />
+				<Show when={workspace()}>
+					<button disabled={historyBusy()} onClick={() => void createHistorySnapshot()}>Snapshot</button>
+					<button onClick={toggleHistory}>履歴</button>
+				</Show>
 				<Show when={document()}>
 					<button disabled={!dirty() || saving()} onClick={() => void saveDocument()}>
 						{saving() ? "保存中..." : dirty() ? "保存 *" : "保存"}
@@ -805,6 +887,37 @@ function App() {
 							</div>
 						</Show>
 					</section>
+				</div>
+			</Show>
+
+			<Show when={historyOpen()}>
+				<div class="history-drawer">
+					<div class="history-drawer-header">
+						<strong>History</strong>
+						<span>{snapshots().length} snapshots</span>
+						<span class="toolbar-spacer" />
+						<button disabled={historyBusy()} onClick={() => void createHistorySnapshot()}>Snapshot</button>
+						<button disabled={historyBusy()} onClick={() => void refreshHistory()}>更新</button>
+						<button onClick={() => setHistoryOpen(false)}>閉じる</button>
+					</div>
+					<div class="history-list">
+						<Show when={!historyBusy()} fallback={<div class="history-empty">処理中...</div>}>
+							<For each={snapshots()}>
+								{snapshot => (
+									<div class="history-entry">
+										<div>
+											<strong>{snapshot.message}</strong>
+											<small>{new Date(snapshot.timestamp * 1000).toLocaleString()} · {snapshot.id.slice(0, 7)}</small>
+										</div>
+										<button disabled={!document() || dirty()} onClick={() => void restoreCurrentDocument(snapshot)}>現在の文書を復元</button>
+									</div>
+								)}
+							</For>
+							<Show when={snapshots().length === 0}>
+								<div class="history-empty">Snapshotはありません。</div>
+							</Show>
+						</Show>
+					</div>
 				</div>
 			</Show>
 
