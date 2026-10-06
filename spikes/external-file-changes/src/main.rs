@@ -150,7 +150,7 @@ fn verify_dirty_conflict(root: &Path, rx: &Receiver<notify::Result<Event>>) -> R
 	wait_for_event(rx, &[&path], "external conflict update")?;
 	let disk = fs::read_to_string(&path)?;
 	let result = state.reconcile(&disk);
-	if !matches!(result, ReconcileResult::Conflict { .. }) {
+	if !matches!(&result, ReconcileResult::Conflict { .. }) {
 		bail!("dirty documentをConflictとして検出できなかった: {result:?}");
 	}
 	if state.buffer != "local unsaved edit\n" {
