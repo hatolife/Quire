@@ -1,6 +1,7 @@
 mod editor;
 mod logging;
 mod settings;
+mod watcher;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use quire_core::{Document, Workspace, WorkspaceEntry, WorkspaceInfo};
@@ -33,6 +34,21 @@ fn workspace_open(path: String, state: tauri::State<'_, AppState>) -> Result<Wor
 #[tauri::command]
 fn workspace_list(relative_path: String, state: tauri::State<'_, AppState>) -> Result<Vec<WorkspaceEntry>, String> {
 	with_workspace(&state, |workspace| workspace.list_directory(&relative_path).map_err(|error| error.to_string()))
+}
+
+#[tauri::command]
+fn workspace_watch(
+	stream: Channel<watcher::WatchMessage>,
+	state: tauri::State<'_, AppState>,
+	watcher_state: tauri::State<'_, watcher::WatcherState>,
+) -> Result<(), String> {
+	let root = with_workspace(&state, |workspace| Ok(std::path::PathBuf::from(workspace.info().root)))?;
+	watcher_state.start(root, stream)
+}
+
+#[tauri::command]
+fn workspace_watch_stop(watcher_state: tauri::State<'_, watcher::WatcherState>) -> Result<(), String> {
+	watcher_state.stop()
 }
 
 #[tauri::command]
@@ -228,9 +244,12 @@ fn main() {
 		})
 		.manage(editor::EditorState::default())
 		.manage(logging::LogState::default())
+		.manage(watcher::WatcherState::default())
 		.invoke_handler(tauri::generate_handler![
 			workspace_open,
 			workspace_list,
+			workspace_watch,
+			workspace_watch_stop,
 			document_open,
 			document_save,
 			document_create,

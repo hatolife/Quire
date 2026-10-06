@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type WorkspaceInfo = {
 	root: string;
@@ -15,6 +15,10 @@ export type WorkspaceOpened = {
 	info: WorkspaceInfo;
 	entries: WorkspaceEntry[];
 };
+
+export type WorkspaceWatchMessage =
+	| { kind: "changed"; paths: string[] }
+	| { kind: "error"; message: string };
 
 export type Document = {
 	relativePath: string;
@@ -41,6 +45,14 @@ export function workspaceOpen(path: string) {
 
 export function workspaceList(relativePath: string) {
 	return invoke<WorkspaceEntry[]>("workspace_list", { relativePath });
+}
+
+export function workspaceWatch(stream: Channel<WorkspaceWatchMessage>) {
+	return invoke<void>("workspace_watch", { stream });
+}
+
+export function workspaceWatchStop() {
+	return invoke<void>("workspace_watch_stop");
 }
 
 export function documentOpen(relativePath: string) {

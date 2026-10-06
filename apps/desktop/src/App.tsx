@@ -1,3 +1,4 @@
+import { Channel } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
@@ -18,11 +19,14 @@ import {
 	settingsSave,
 	workspaceList,
 	workspaceOpen,
+	workspaceWatch,
+	workspaceWatchStop,
 	type DesktopSettings,
 	type Document,
 	type LogEntry,
 	type WorkspaceEntry,
 	type WorkspaceInfo,
+	type WorkspaceWatchMessage,
 } from "./ipc";
 
 const markdown = new MarkdownIt({
@@ -75,6 +79,8 @@ function App() {
 	let suppressEditorViewport = false;
 	let suppressPreviewScroll = false;
 	let closeUnlisten: (() => void) | undefined;
+	let reconcileTimer: number | undefined;
+	let watchGeneration = 0;
 	const assetCache = new Map<string, Promise<string>>();
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
@@ -83,6 +89,8 @@ function App() {
 	const [draft, setDraft] = createSignal("");
 	const [status, setStatus] = createSignal("Workspaceを開いてください");
 	const [saving, setSaving] = createSignal(false);
+	const [externalConflict, setExternalConflict] = createSignal(false);
+	const [editorSession, setEditorSession] = createSignal(0);
 	const [explorerWidth, setExplorerWidth] = createSignal(260);
 	const [editorRatio, setEditorRatio] = createSignal(0.5);
 	const [logOpen, setLogOpen] = createSignal(false);
@@ -206,6 +214,9 @@ function App() {
 
 	onCleanup(() => {
 		closeUnlisten?.();
+		++watchGeneration;
+		if(reconcileTimer !== undefined){ window.clearTimeout(reconcileTimer); }
+		void workspaceWatchStop();
 	});
 
 	const previewAnchors = () => {
@@ -319,6 +330,8 @@ function App() {
 			setWorkspace(opened.info);
 			setEntries(opened.entries);
 			assetCache.clear();
+			setExternalConflict(false);
+			void startWorkspaceWatcher();
 			setDocument(null);
 			setDraft("");
 			updateStatus(opened.info.name + " を開きました", "info", "workspace");
@@ -329,6 +342,67 @@ function App() {
 
 	const loadDirectory = async (relativePath: string) => {
 		return workspaceList(relativePath);
+	};
+
+	const reconcileExternalChanges = async () => {
+		await refreshExplorer();
+		const current = document();
+		if(!current){ return; }
+		try{
+			const disk = await documentOpen(current.relativePath);
+			if(disk.revision === current.revision){
+				setExternalConflict(false);
+				return;
+			}
+			if(dirty()){
+				setExternalConflict(true);
+				updateStatus("外部変更を検出しました。未保存bufferは保持しています: " + current.relativePath, "warn", "watcher");
+				return;
+			}
+			setDocument(disk);
+			setDraft(contentForEditor(disk.content));
+			setExternalConflict(false);
+			setEditorSession(value => value + 1);
+			assetCache.clear();
+			updateStatus("外部変更を再読込しました: " + disk.relativePath, "info", "watcher");
+		}catch(error){
+			if(dirty()){
+				setExternalConflict(true);
+				updateStatus("外部変更を検出しました。Documentを再読込できません: " + String(error), "warn", "watcher");
+			}else{
+				setDocument(null);
+				setDraft("");
+				setExternalConflict(false);
+				updateStatus("開いていたDocumentが外部で削除または移動されました。", "warn", "watcher");
+			}
+		}
+	};
+
+	const scheduleExternalReconcile = () => {
+		if(reconcileTimer !== undefined){ window.clearTimeout(reconcileTimer); }
+		reconcileTimer = window.setTimeout(() => {
+			reconcileTimer = undefined;
+			void reconcileExternalChanges();
+		}, 200);
+	};
+
+	const startWorkspaceWatcher = async () => {
+		const generation = ++watchGeneration;
+		const stream = new Channel<WorkspaceWatchMessage>();
+		stream.onmessage = message => {
+			if(generation !== watchGeneration){ return; }
+			if(message.kind === "error"){
+				updateStatus("Watcher error: " + message.message, "error", "watcher");
+				return;
+			}
+			scheduleExternalReconcile();
+		};
+		try{
+			await workspaceWatch(stream);
+			updateStatus("Workspace watcher started", "info", "watcher");
+		}catch(error){
+			updateStatus("Workspace watcher start error: " + String(error), "error", "watcher");
+		}
 	};
 
 	const refreshExplorer = async () => {
@@ -356,6 +430,7 @@ function App() {
 			await refreshExplorer();
 			setDocument(created);
 			setDraft(contentForEditor(created.content));
+			setExternalConflict(false);
 			updateStatus(created.relativePath + " を作成しました", "info", "document");
 		}catch(error){
 			updateStatus("Document create error: " + String(error), "error", "document");
@@ -378,6 +453,7 @@ function App() {
 			await refreshExplorer();
 			setDocument(moved);
 			setDraft(contentForEditor(moved.content));
+			setExternalConflict(false);
 			updateStatus(current.relativePath + " → " + moved.relativePath, "info", "document");
 		}catch(error){
 			updateStatus("Document move error: " + String(error), "error", "document");
@@ -396,6 +472,7 @@ function App() {
 			await documentDelete(current.relativePath, current.revision);
 			setDocument(null);
 			setDraft("");
+			setExternalConflict(false);
 			assetCache.clear();
 			await refreshExplorer();
 			updateStatus(current.relativePath + " を削除しました", "info", "document");
@@ -410,6 +487,7 @@ function App() {
 			const opened = await documentOpen(relativePath);
 			setDocument(opened);
 			setDraft(contentForEditor(opened.content));
+			setExternalConflict(false);
 			updateStatus(relativePath, "info", "document");
 		}catch(error){
 			updateStatus("Document open error: " + String(error), "error", "document");
@@ -424,6 +502,7 @@ function App() {
 			const saved = await editorSave(current.revision);
 			setDocument(saved);
 			setDraft(contentForEditor(saved.content));
+			setExternalConflict(false);
 			updateStatus(saved.relativePath + " を保存しました", "info", "save");
 		}catch(error){
 			updateStatus("Save error: " + String(error), "error", "save");
@@ -484,6 +563,7 @@ function App() {
 						<div class="pane-title">
 							<span class="pane-document-path">{document()?.relativePath ?? "Editor"}</span>
 							<Show when={dirty()}><span class="dirty-mark">●</span></Show>
+							<Show when={externalConflict()}><span class="external-conflict">外部変更</span></Show>
 							<span class="toolbar-spacer" />
 							<Show when={document()}>
 								<button class="pane-action" title="移動・名前変更" disabled={dirty()} onClick={() => void moveCurrentDocument()}>移動</button>
@@ -491,13 +571,13 @@ function App() {
 							</Show>
 						</div>
 						<Show
-							when={document()?.relativePath}
+							when={document() ? document()!.relativePath + "::" + editorSession() : null}
 							keyed
 							fallback={<div class="empty-pane">左からMarkdownを選択してください。</div>}
 						>
-							{relativePath => (
+							{() => (
 								<NeovimEditor
-									relativePath={relativePath}
+									relativePath={document()!.relativePath}
 									onTextChange={setDraft}
 									onViewportLineChange={handleEditorViewportLine}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") || message.toLowerCase().includes("closed") ? "error" : "info", "editor")}
