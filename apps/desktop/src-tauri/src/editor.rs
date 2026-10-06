@@ -498,6 +498,21 @@ pub fn set_top_line(line: u64, state: &EditorState) -> Result<(), String> {
 	Ok(())
 }
 
+pub fn goto_line(line: u64, state: &EditorState) -> Result<(), String> {
+	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
+	let process = slot.as_mut().ok_or_else(|| "Editor is not running.".to_string())?;
+	let one_based = line.max(1);
+	process.request(
+		"nvim_win_set_cursor",
+		vec![
+			Value::from(0),
+			Value::Array(vec![Value::from(one_based), Value::from(0)]),
+		],
+	)?;
+	process.request("nvim_command", vec![Value::from("normal! zz")])?;
+	Ok(())
+}
+
 pub fn stop(state: &EditorState) -> Result<(), String> {
 	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
 	if let Some(mut process) = slot.take() {

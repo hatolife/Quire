@@ -4,7 +4,7 @@ mod settings;
 mod watcher;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use quire_core::{Document, Workspace, WorkspaceEntry, WorkspaceInfo};
+use quire_core::{Document, SearchHit, Workspace, WorkspaceEntry, WorkspaceInfo};
 use serde::Serialize;
 use std::path::Path;
 use tauri::ipc::Channel;
@@ -49,6 +49,11 @@ fn workspace_watch(
 #[tauri::command]
 fn workspace_watch_stop(watcher_state: tauri::State<'_, watcher::WatcherState>) -> Result<(), String> {
 	watcher_state.stop()
+}
+
+#[tauri::command]
+fn workspace_search(query: String, limit: usize, state: tauri::State<'_, AppState>) -> Result<Vec<SearchHit>, String> {
+	with_workspace(&state, |workspace| workspace.search(&query, limit).map_err(|error| error.to_string()))
 }
 
 #[tauri::command]
@@ -196,6 +201,11 @@ fn editor_set_top_line(line: u64, editor_state: tauri::State<'_, editor::EditorS
 }
 
 #[tauri::command]
+fn editor_goto_line(line: u64, editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
+	editor::goto_line(line, &editor_state)
+}
+
+#[tauri::command]
 fn editor_stop(editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
 	editor::stop(&editor_state)
 }
@@ -250,6 +260,7 @@ fn main() {
 			workspace_list,
 			workspace_watch,
 			workspace_watch_stop,
+			workspace_search,
 			document_open,
 			document_save,
 			document_create,
@@ -263,6 +274,7 @@ fn main() {
 			editor_save,
 			editor_get_top_line,
 			editor_set_top_line,
+			editor_goto_line,
 			editor_stop,
 			settings_load,
 			settings_save,

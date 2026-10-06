@@ -26,6 +26,13 @@ export type Document = {
 	revision: string;
 };
 
+export type SearchHit = {
+	kind: "filename" | "content";
+	relativePath: string;
+	line?: number;
+	preview: string;
+};
+
 export type DesktopSettings = {
 	explorerWidth: number;
 	editorRatio: number;
@@ -53,6 +60,10 @@ export function workspaceWatch(stream: Channel<WorkspaceWatchMessage>) {
 
 export function workspaceWatchStop() {
 	return invoke<void>("workspace_watch_stop");
+}
+
+export function workspaceSearch(query: string, limit = 100) {
+	return invoke<SearchHit[]>("workspace_search", { query, limit });
 }
 
 export function documentOpen(relativePath: string) {

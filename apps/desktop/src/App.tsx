@@ -19,11 +19,13 @@ import {
 	settingsSave,
 	workspaceList,
 	workspaceOpen,
+	workspaceSearch,
 	workspaceWatch,
 	workspaceWatchStop,
 	type DesktopSettings,
 	type Document,
 	type LogEntry,
+	type SearchHit,
 	type WorkspaceEntry,
 	type WorkspaceInfo,
 	type WorkspaceWatchMessage,
@@ -80,6 +82,7 @@ function App() {
 	let suppressPreviewScroll = false;
 	let closeUnlisten: (() => void) | undefined;
 	let reconcileTimer: number | undefined;
+	let searchTimer: number | undefined;
 	let watchGeneration = 0;
 	const assetCache = new Map<string, Promise<string>>();
 
@@ -95,6 +98,10 @@ function App() {
 	const [editorRatio, setEditorRatio] = createSignal(0.5);
 	const [logOpen, setLogOpen] = createSignal(false);
 	const [logs, setLogs] = createSignal<LogEntry[]>([]);
+	const [searchQuery, setSearchQuery] = createSignal("");
+	const [searchResults, setSearchResults] = createSignal<SearchHit[]>([]);
+	const [searching, setSearching] = createSignal(false);
+	const [initialEditorLine, setInitialEditorLine] = createSignal<number | undefined>();
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
@@ -181,6 +188,26 @@ function App() {
 		requestAnimationFrame(() => { void resolvePreviewAssets(relativePath); });
 	});
 
+	createEffect(() => {
+		const query = searchQuery().trim();
+		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
+		if(!query || !workspace()){
+			setSearchResults([]);
+			setSearching(false);
+			return;
+		}
+		setSearching(true);
+		searchTimer = window.setTimeout(async () => {
+			try{
+				setSearchResults(await workspaceSearch(query));
+			}catch(error){
+				updateStatus("Search error: " + String(error), "error", "search");
+			}finally{
+				setSearching(false);
+			}
+		}, 150);
+	});
+
 	const persistLayout = async () => {
 		try{
 			await settingsSave({
@@ -216,6 +243,7 @@ function App() {
 		closeUnlisten?.();
 		++watchGeneration;
 		if(reconcileTimer !== undefined){ window.clearTimeout(reconcileTimer); }
+		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
 		void workspaceWatchStop();
 	});
 
@@ -481,17 +509,25 @@ function App() {
 		}
 	};
 
-	const openDocument = async (relativePath: string) => {
+	const openDocument = async (relativePath: string, line?: number) => {
 		if(dirty() && !window.confirm("未保存の変更があります。破棄して別の文書を開きますか？")){ return; }
 		try{
 			const opened = await documentOpen(relativePath);
 			setDocument(opened);
 			setDraft(contentForEditor(opened.content));
 			setExternalConflict(false);
+			setInitialEditorLine(line);
+			if(line !== undefined || document()?.relativePath === relativePath){
+				setEditorSession(value => value + 1);
+			}
 			updateStatus(relativePath, "info", "document");
 		}catch(error){
 			updateStatus("Document open error: " + String(error), "error", "document");
 		}
+	};
+
+	const openSearchHit = async (hit: SearchHit) => {
+		await openDocument(hit.relativePath, hit.line);
 	};
 
 	const saveDocument = async () => {
@@ -547,10 +583,40 @@ function App() {
 							<button class="pane-action" title="新規Markdown" onClick={() => void createDocument()}>＋</button>
 							<button class="pane-action" title="再読込" onClick={() => void refreshExplorer()}>↻</button>
 						</div>
-						<div class="tree">
-							<For each={entries()}>
-								{entry => <TreeEntry entry={entry} loadDirectory={loadDirectory} openDocument={openDocument} />}
-							</For>
+						<div class="explorer-search-row">
+							<input
+								class="explorer-search"
+								type="search"
+								value={searchQuery()}
+								onInput={event => setSearchQuery(event.currentTarget.value)}
+								placeholder="ファイル名・本文を検索"
+							/>
+						</div>
+						<div class="tree explorer-body">
+							<Show
+								when={searchQuery().trim()}
+								fallback={
+									<For each={entries()}>
+										{entry => <TreeEntry entry={entry} loadDirectory={loadDirectory} openDocument={openDocument} />}
+									</For>
+								}
+							>
+								<Show when={!searching()} fallback={<div class="search-state">検索中...</div>}>
+									<For each={searchResults()}>
+										{hit => (
+											<button class="search-hit" onClick={() => void openSearchHit(hit)}>
+												<span class="search-hit-path">
+													{hit.relativePath}{hit.line ? ":" + hit.line : ""}
+												</span>
+												<span class="search-hit-preview">{hit.preview}</span>
+											</button>
+										)}
+									</For>
+									<Show when={searchResults().length === 0}>
+										<div class="search-state">該当なし</div>
+									</Show>
+								</Show>
+							</Show>
 						</div>
 					</aside>
 					<div
@@ -578,6 +644,7 @@ function App() {
 							{() => (
 								<NeovimEditor
 									relativePath={document()!.relativePath}
+									initialLine={initialEditorLine()}
 									onTextChange={setDraft}
 									onViewportLineChange={handleEditorViewportLine}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") || message.toLowerCase().includes("closed") ? "error" : "info", "editor")}

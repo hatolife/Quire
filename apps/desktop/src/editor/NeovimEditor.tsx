@@ -60,6 +60,7 @@ type Grid = {
 
 type Props = {
 	relativePath: string;
+	initialLine?: number;
 	onTextChange: (text: string) => void;
 	onViewportLineChange: (line: number) => void;
 	onStatus: (status: string) => void;
@@ -533,6 +534,9 @@ export default function NeovimEditor(props: Props) {
 			});
 			started = true;
 			await requestResize();
+			if(props.initialLine && props.initialLine > 0){
+				await invoke("editor_goto_line", { line: props.initialLine });
+			}
 			requestViewportLine();
 			props.onStatus("Neovim connected");
 			input.focus();
