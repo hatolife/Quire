@@ -120,8 +120,16 @@ impl Workspace {
 		Ok(entries)
 	}
 
-	pub fn read_document(&self, relative_path: &str) -> Result<Document, WorkspaceError> {
+	pub fn document_path(&self, relative_path: &str) -> Result<PathBuf, WorkspaceError> {
 		let path = self.resolve_existing(relative_path)?;
+		if !path.is_file() {
+			return Err(WorkspaceError::InvalidRelativePath(relative_path.to_string()));
+		}
+		Ok(path)
+	}
+
+	pub fn read_document(&self, relative_path: &str) -> Result<Document, WorkspaceError> {
+		let path = self.document_path(relative_path)?;
 		let bytes = fs::read(&path)?;
 		let content = String::from_utf8(bytes.clone()).map_err(|error| {
 			WorkspaceError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
@@ -134,10 +142,7 @@ impl Workspace {
 	}
 
 	pub fn save_document(&self, relative_path: &str, content: &str, expected_revision: &str) -> Result<Document, WorkspaceError> {
-		let path = self.resolve_existing(relative_path)?;
-		if !path.is_file() {
-			return Err(WorkspaceError::InvalidRelativePath(relative_path.to_string()));
-		}
+		let path = self.document_path(relative_path)?;
 
 		let current = fs::read(&path)?;
 		if revision(&current) != expected_revision {
