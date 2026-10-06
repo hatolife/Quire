@@ -9,10 +9,15 @@ jobs:
     name: Neovim embed spike
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/neovim-embed -> target
 
       - name: Install Neovim
         shell: powershell
@@ -31,15 +36,20 @@ jobs:
     name: Neovim UI spike build
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/neovim-ui/src-tauri -> target
 
       - name: Install frontend dependencies
         working-directory: spikes/neovim-ui
@@ -66,7 +76,7 @@ jobs:
         run: cargo build --release --manifest-path spikes/neovim-ui/src-tauri/Cargo.toml
 
       - name: Upload Neovim UI spike
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: quire-neovim-ui-spike-windows
           if-no-files-found: error
