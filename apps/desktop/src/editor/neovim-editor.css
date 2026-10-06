@@ -45,3 +45,26 @@
 	color: transparent;
 	caret-color: transparent;
 }
+
+.neovim-editor-closed {
+	position: absolute;
+	inset: 0;
+	z-index: 5;
+	display: grid;
+	place-content: center;
+	gap: 10px;
+	padding: 24px;
+	background: rgba(20, 20, 20, 0.94);
+	color: #ddd;
+	text-align: center;
+}
+
+.neovim-editor-closed span {
+	max-width: 560px;
+	color: #aaa;
+}
+
+.neovim-editor-closed button {
+	justify-self: center;
+	margin-top: 6px;
+}
