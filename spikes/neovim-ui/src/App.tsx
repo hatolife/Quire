@@ -19,6 +19,14 @@ type GridCellUpdate = {
 	repeat: number;
 };
 
+type CursorStyle = {
+	cursorShape?: "block" | "horizontal" | "vertical";
+	cellPercentage?: number;
+	attrId?: number;
+	shortName?: string;
+	name?: string;
+};
+
 type UiEvent =
 	| { type: "grid_resize"; grid: number; width: number; height: number }
 	| { type: "grid_clear"; grid: number }
@@ -27,6 +35,10 @@ type UiEvent =
 	| { type: "grid_scroll"; grid: number; top: number; bot: number; left: number; right: number; rows: number; cols: number }
 	| { type: "default_colors_set"; foreground: number; background: number; special: number }
 	| { type: "hl_attr_define"; id: number; attrs: Highlight }
+	| { type: "mode_info_set"; cursorStyleEnabled: boolean; modes: CursorStyle[] }
+	| { type: "mode_change"; mode: string; modeIdx: number }
+	| { type: "busy_start" }
+	| { type: "busy_stop" }
 	| { type: "flush" };
 
 type StreamMessage =
@@ -67,11 +79,16 @@ function App() {
 	let cellWidth = 9;
 	let grid = createGrid(80, 24);
 	let cursor = { grid: 1, row: 0, col: 0 };
+	let cursorStyleEnabled = false;
+	let cursorStyles: CursorStyle[] = [];
+	let currentModeIdx = 0;
+	let cursorVisible = true;
 	let defaultForeground = 0xffffff;
 	let defaultBackground = 0x000000;
 	let defaultSpecial = 0xffffff;
 	const highlights = new Map<number, Highlight>();
 	const [status, setStatus] = createSignal("starting");
+	const [mode, setMode] = createSignal("unknown");
 
 	const sendInput = async (text: string) => {
 		if(!text){ return; }
@@ -173,10 +190,25 @@ function App() {
 			}
 		}
 
-		if(cursor.grid === 1){
-			ctx.strokeStyle = rgbToCss(defaultForeground, "#ffffff");
-			ctx.lineWidth = 1;
-			ctx.strokeRect(cursor.col * cellWidth + 0.5, cursor.row * CELL_HEIGHT + 0.5, Math.max(1, cellWidth - 1), CELL_HEIGHT - 1);
+		if(cursor.grid === 1 && cursorVisible){
+			const style = cursorStyleEnabled ? cursorStyles[currentModeIdx] : undefined;
+			const shape = style?.cursorShape ?? "block";
+			const percentage = Math.max(1, Math.min(100, style?.cellPercentage ?? (shape === "block" ? 100 : 25)));
+			const x = cursor.col * cellWidth;
+			const y = cursor.row * CELL_HEIGHT;
+			ctx.fillStyle = rgbToCss(defaultForeground, "#ffffff");
+			if(shape === "vertical"){
+				ctx.fillRect(x, y, Math.max(1, Math.ceil(cellWidth * percentage / 100)), CELL_HEIGHT);
+			}else if(shape === "horizontal"){
+				const height = Math.max(1, Math.ceil(CELL_HEIGHT * percentage / 100));
+				ctx.fillRect(x, y + CELL_HEIGHT - height, cellWidth, height);
+			}else{
+				ctx.globalAlpha = 0.35;
+				ctx.fillRect(x, y, cellWidth, CELL_HEIGHT);
+				ctx.globalAlpha = 1;
+				ctx.strokeStyle = rgbToCss(defaultForeground, "#ffffff");
+				ctx.strokeRect(x + 0.5, y + 0.5, Math.max(1, cellWidth - 1), CELL_HEIGHT - 1);
+			}
 		}
 		positionInput();
 	};
@@ -239,6 +271,24 @@ function App() {
 		}
 		case "hl_attr_define":{
 			highlights.set(event.id, event.attrs);
+			break;
+		}
+		case "mode_info_set":{
+			cursorStyleEnabled = event.cursorStyleEnabled;
+			cursorStyles = event.modes;
+			break;
+		}
+		case "mode_change":{
+			currentModeIdx = event.modeIdx;
+			setMode(event.mode);
+			break;
+		}
+		case "busy_start":{
+			cursorVisible = false;
+			break;
+		}
+		case "busy_stop":{
+			cursorVisible = true;
 			break;
 		}
 		case "flush":{
@@ -330,6 +380,7 @@ function App() {
 			<div class="toolbar">
 				<strong>Quire / Neovim UI Spike</strong>
 				<span>{status()}</span>
+				<span>mode: {mode()}</span>
 				<span>Canvas + ext_linegrid + Tauri Channel</span>
 			</div>
 			<div

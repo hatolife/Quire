@@ -61,6 +61,16 @@ struct Highlight {
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CursorStyle {
+	cursor_shape: Option<String>,
+	cell_percentage: Option<u64>,
+	attr_id: Option<u64>,
+	short_name: Option<String>,
+	name: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum UiEvent {
 	GridResize { grid: u64, width: u64, height: u64 },
@@ -70,6 +80,10 @@ enum UiEvent {
 	GridScroll { grid: u64, top: u64, bot: u64, left: u64, right: u64, rows: i64, cols: i64 },
 	DefaultColorsSet { foreground: i64, background: i64, special: i64 },
 	HlAttrDefine { id: u64, attrs: Highlight },
+	ModeInfoSet { #[serde(rename = "cursorStyleEnabled")] cursor_style_enabled: bool, modes: Vec<CursorStyle> },
+	ModeChange { mode: String, #[serde(rename = "modeIdx")] mode_idx: u64 },
+	BusyStart,
+	BusyStop,
 	Flush,
 }
 
@@ -103,6 +117,17 @@ fn parse_highlight(value: &Value) -> Highlight {
 		italic: map_value(map, "italic").and_then(Value::as_bool).unwrap_or(false),
 		underline: map_value(map, "underline").and_then(Value::as_bool).unwrap_or(false),
 		strikethrough: map_value(map, "strikethrough").and_then(Value::as_bool).unwrap_or(false),
+	}
+}
+
+fn parse_cursor_style(value: &Value) -> CursorStyle {
+	let map = value.as_map().map(|map| map.as_slice()).unwrap_or(&[]);
+	CursorStyle {
+		cursor_shape: map_value(map, "cursor_shape").and_then(Value::as_str).map(str::to_string),
+		cell_percentage: map_value(map, "cell_percentage").and_then(value_u64),
+		attr_id: map_value(map, "attr_id").and_then(value_u64),
+		short_name: map_value(map, "short_name").and_then(Value::as_str).map(str::to_string),
+		name: map_value(map, "name").and_then(Value::as_str).map(str::to_string),
 	}
 }
 
@@ -159,6 +184,16 @@ fn parse_update(name: &str, params: &[Value]) -> Option<UiEvent> {
 			id: value_u64(&params[0])?,
 			attrs: parse_highlight(&params[1]),
 		}),
+		"mode_info_set" if params.len() >= 2 => Some(UiEvent::ModeInfoSet {
+			cursor_style_enabled: params[0].as_bool().unwrap_or(false),
+			modes: params[1].as_array()?.iter().map(parse_cursor_style).collect(),
+		}),
+		"mode_change" if params.len() >= 2 => Some(UiEvent::ModeChange {
+			mode: params[0].as_str()?.to_string(),
+			mode_idx: value_u64(&params[1])?,
+		}),
+		"busy_start" => Some(UiEvent::BusyStart),
+		"busy_stop" => Some(UiEvent::BusyStop),
 		"flush" => Some(UiEvent::Flush),
 		_ => None,
 	}
