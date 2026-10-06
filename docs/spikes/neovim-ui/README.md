@@ -106,6 +106,22 @@ Windows実機でproduction executableを起動し、次を確認した。
 - `mode: normal` を取得した。
 - Neovim startup画面をCanvas上へ描画できた。
 
-初期表示は成立した。
+初期表示に加えて、次を実機確認した。
 
-ただし、採用判定に必要な日本語IME、長時間編集、mouse、resize、DPI scaling、異常終了復旧は引き続き未確認である。
+- ASCII入力。
+- Normal / Insert mode切り替え。
+- `hjkl`、`dd`、`u`。
+- mouse clickによるcursor移動。
+- drag selection。
+- wheel scroll。
+- Window resize。
+- 日本語IMEの候補windowがcursor付近へ表示される。
+- 日本語IMEの変換確定文字列がNeovim本文へ入力される。
+
+一方、変換確定前のpreedit文字列がCanvas上に表示されず、通常の入力欄と比べて入力中の状態が見えない問題を確認した。
+
+このためNeovim UI Spikeはまだ完全合格にしない。
+
+`compositionupdate` 中のpreedit文字列をcursor位置へ重ねて描画する修正を追加し、再確認する。
+
+長時間編集、DPI scaling、異常終了復旧は引き続き未確認である。
