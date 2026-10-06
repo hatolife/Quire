@@ -22,7 +22,7 @@ pub enum WorkspaceError {
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
-	root: PathBuf,
+	pub(crate) root: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize)]
