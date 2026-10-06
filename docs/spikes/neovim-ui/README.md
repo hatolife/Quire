@@ -43,6 +43,7 @@ Tauri公式文書ではEvent systemは低遅延・高スループット用途向
 - \`flush\` 到達時だけCanvasを再描画。
 - Window resizeから \`nvim_ui_try_resize\`。
 - キー入力を \`nvim_input\` へ転送。
+- click / drag / wheelを \`nvim_input_mouse\` へ転送。
 - IME用に非表示textareaをcursor付近へ配置。
 
 ## Important limitation
