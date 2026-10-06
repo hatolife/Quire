@@ -123,3 +123,27 @@ jobs:
           path: |
             spikes/multi-webview/src-tauri/target/release/quire-multi-webview-spike.exe
             spikes/multi-webview/package-lock.json
+
+  webview2-extensions-spike-build:
+    name: WebView2 Extensions spike build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/webview2-extensions/src-tauri -> target
+
+      - name: Build Windows executable
+        run: cargo build --release --manifest-path spikes/webview2-extensions/src-tauri/Cargo.toml
+
+      - name: Upload WebView2 Extensions spike
+        uses: actions/upload-artifact@v7
+        with:
+          name: quire-webview2-extensions-spike-windows
+          if-no-files-found: error
+          path: spikes/webview2-extensions/src-tauri/target/release/quire-webview2-extensions-spike.exe
