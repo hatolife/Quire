@@ -164,3 +164,20 @@ jobs:
 
       - name: Run Git snapshot isolation spike
         run: cargo run --release --manifest-path spikes/git-snapshot-isolation/Cargo.toml
+
+  external-file-changes-spike:
+    name: External file changes spike
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: spikes/external-file-changes -> target
+
+      - name: Run external file changes spike
+        run: cargo run --release --manifest-path spikes/external-file-changes/Cargo.toml
