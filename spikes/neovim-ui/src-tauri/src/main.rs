@@ -91,6 +91,7 @@ enum UiEvent {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum StreamMessage {
 	Redraw { events: Vec<UiEvent> },
+	Error { message: String },
 	Closed { message: String },
 }
 
@@ -220,6 +221,15 @@ fn parse_redraw(value: &Value) -> Option<Vec<UiEvent>> {
 	(!events.is_empty()).then_some(events)
 }
 
+fn parse_error_event(value: &Value) -> Option<String> {
+	let message = value.as_array()?;
+	if(message.len() != 3 || message[0].as_i64() != Some(2) || message[1].as_str() != Some("nvim_error_event")){ return None; }
+	let args = message[2].as_array()?;
+	let error_type = args.first().and_then(value_i64).unwrap_or(-1);
+	let error_message = args.get(1).and_then(Value::as_str).unwrap_or("Unknown Neovim error.");
+	Some(format!("Neovim error {error_type}: {error_message}"))
+}
+
 fn read_neovim(stdout: impl std::io::Read, stream: Channel<StreamMessage>) {
 	let mut reader = BufReader::new(stdout);
 	loop {
@@ -227,6 +237,8 @@ fn read_neovim(stdout: impl std::io::Read, stream: Channel<StreamMessage>) {
 			Ok(value) => {
 				if let Some(events) = parse_redraw(&value) {
 					if stream.send(StreamMessage::Redraw { events }).is_err(){ return; }
+				}else if let Some(message) = parse_error_event(&value) {
+					if stream.send(StreamMessage::Error { message }).is_err(){ return; }
 				}
 			}
 			Err(error) => {
@@ -268,6 +280,13 @@ fn start_editor(stream: Channel<StreamMessage>, state: tauri::State<'_, EditorSt
 	let stdout = child.stdout.take().ok_or_else(|| "Neovim stdout is unavailable.".to_string())?;
 	let mut process = EditorProcess { child, stdin, next_request_id: 1 };
 	thread::spawn(move || read_neovim(stdout, stream));
+	process.send_request("nvim_set_client_info", vec![
+		Value::from("Quire"),
+		Value::Map(vec![(Value::from("prerelease"), Value::from("neovim-ui-spike"))]),
+		Value::from("ui"),
+		Value::Map(vec![]),
+		Value::Map(vec![]),
+	])?;
 	let options = Value::Map(vec![
 		(Value::from("rgb"), Value::from(true)),
 		(Value::from("ext_linegrid"), Value::from(true)),

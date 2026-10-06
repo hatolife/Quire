@@ -43,6 +43,7 @@ type UiEvent =
 
 type StreamMessage =
 	| { kind: "redraw"; events: UiEvent[] }
+	| { kind: "error"; message: string }
 	| { kind: "closed"; message: string };
 
 type Cell = { text: string; hlId: number };
@@ -349,6 +350,8 @@ function App() {
 			if(message.kind === "redraw"){
 				for(const event of message.events){ applyEvent(event); }
 				setStatus("connected");
+			}else if(message.kind === "error"){
+				setStatus(message.message);
 			}else{
 				setStatus(`closed: ${message.message}`);
 			}
