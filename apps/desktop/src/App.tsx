@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
 import { createMemo, createSignal, For, Show } from "solid-js";
+import NeovimEditor from "./editor/NeovimEditor";
 
 type WorkspaceInfo = {
 	root: string;
@@ -42,10 +43,14 @@ function renderPreview(source: string): string {
 	return markdown.renderer.render(tokens, markdown.options, environment);
 }
 
+function contentForEditor(content: string): string {
+	const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+	return normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
+}
+
 function App() {
-	let editorElement!: HTMLTextAreaElement;
 	let previewElement!: HTMLElement;
-	let suppressEditorScroll = false;
+	let suppressEditorViewport = false;
 	let suppressPreviewScroll = false;
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
@@ -55,13 +60,7 @@ function App() {
 	const [status, setStatus] = createSignal("Workspaceを開いてください");
 	const [saving, setSaving] = createSignal(false);
 	const preview = createMemo(() => renderPreview(draft()));
-	const dirty = createMemo(() => document() !== null && draft() !== document()!.content);
-
-	const editorLineHeight = () => {
-		const style = getComputedStyle(editorElement);
-		const lineHeight = Number.parseFloat(style.lineHeight);
-		return Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 22.4;
-	};
+	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
 	const previewAnchors = () => {
 		const previewRect = previewElement.getBoundingClientRect();
@@ -108,20 +107,20 @@ function App() {
 		return anchors[anchors.length - 1].line;
 	};
 
-	const handleEditorScroll = () => {
-		if(suppressEditorScroll || !previewElement){ return; }
-		const line = editorElement.scrollTop / editorLineHeight();
+	const handleEditorViewportLine = (line: number) => {
+		if(suppressEditorViewport || !previewElement){ return; }
 		suppressPreviewScroll = true;
 		previewElement.scrollTop = previewTopForLine(line);
 		requestAnimationFrame(() => { suppressPreviewScroll = false; });
 	};
 
 	const handlePreviewScroll = () => {
-		if(suppressPreviewScroll || !editorElement){ return; }
-		const line = sourceLineForPreviewTop(previewElement.scrollTop);
-		suppressEditorScroll = true;
-		editorElement.scrollTop = line * editorLineHeight();
-		requestAnimationFrame(() => { suppressEditorScroll = false; });
+		if(suppressPreviewScroll || !document()){ return; }
+		const line = Math.max(0, Math.floor(sourceLineForPreviewTop(previewElement.scrollTop)));
+		suppressEditorViewport = true;
+		void invoke("editor_set_top_line", { line })
+			.catch(error => setStatus("Editor viewport error: " + String(error)))
+			.finally(() => requestAnimationFrame(() => { suppressEditorViewport = false; }));
 	};
 
 	const chooseWorkspace = async () => {
@@ -152,7 +151,7 @@ function App() {
 		try{
 			const opened = await invoke<Document>("document_open", { relativePath });
 			setDocument(opened);
-			setDraft(opened.content);
+			setDraft(contentForEditor(opened.content));
 			setStatus(relativePath);
 		}catch(error){
 			setStatus("Document open error: " + String(error));
@@ -164,13 +163,11 @@ function App() {
 		if(!current || !dirty() || saving()){ return; }
 		setSaving(true);
 		try{
-			const saved = await invoke<Document>("document_save", {
-				relativePath: current.relativePath,
-				content: draft(),
+			const saved = await invoke<Document>("editor_save", {
 				expectedRevision: current.revision,
 			});
 			setDocument(saved);
-			setDraft(saved.content);
+			setDraft(contentForEditor(saved.content));
 			setStatus(saved.relativePath + " を保存しました");
 		}catch(error){
 			setStatus("Save error: " + String(error));
@@ -218,17 +215,19 @@ function App() {
 							<Show when={dirty()}><span class="dirty-mark">●</span></Show>
 						</div>
 						<Show
-							when={document()}
+							when={document()?.relativePath}
+							keyed
 							fallback={<div class="empty-pane">左からMarkdownを選択してください。</div>}
 						>
-							<textarea
-								ref={editorElement}
-								class="bootstrap-editor"
-								value={draft()}
-								onInput={event => setDraft(event.currentTarget.value)}
-								onScroll={handleEditorScroll}
-								spellcheck={false}
-							/>
+							{relativePath => (
+								<NeovimEditor
+									relativePath={relativePath}
+									onTextChange={setDraft}
+									onViewportLineChange={handleEditorViewportLine}
+									onStatus={setStatus}
+									onSave={() => void saveDocument()}
+								/>
+							)}
 						</Show>
 					</section>
 					<section class="preview-pane">
