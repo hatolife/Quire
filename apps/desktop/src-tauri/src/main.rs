@@ -97,6 +97,16 @@ fn editor_save(
 }
 
 #[tauri::command]
+fn editor_get_top_line(editor_state: tauri::State<'_, editor::EditorState>) -> Result<u64, String> {
+	editor::top_line(&editor_state)
+}
+
+#[tauri::command]
+fn editor_set_top_line(line: u64, editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
+	editor::set_top_line(line, &editor_state)
+}
+
+#[tauri::command]
 fn editor_stop(editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
 	editor::stop(&editor_state)
 }
@@ -124,6 +134,8 @@ fn main() {
 			editor_resize,
 			editor_mouse,
 			editor_save,
+			editor_get_top_line,
+			editor_set_top_line,
 			editor_stop,
 		])
 		.run(tauri::generate_context!())
