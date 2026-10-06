@@ -49,6 +49,23 @@ canvas {
 	height: 100%;
 }
 
+.ime-preedit {
+	position: absolute;
+	z-index: 3;
+	display: none;
+	padding: 0 1px;
+	background: #111;
+	color: #ddd;
+	font: 16px/22px "Cascadia Mono", "Yu Gothic UI", Consolas, monospace;
+	white-space: pre;
+	text-decoration: underline;
+	pointer-events: none;
+}
+
+.ime-preedit.active {
+	display: block;
+}
+
 .ime-input {
 	position: absolute;
 	z-index: 2;
