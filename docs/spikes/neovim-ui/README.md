@@ -96,3 +96,16 @@ CIではGUI操作そのものは検証しない。
   - https://v2.tauri.app/develop/calling-rust/
 - Neovim UI protocol
   - https://neovim.io/doc/user/api-ui-events/
+
+## 実機確認 2026-10-06
+
+Windows実機でproduction executableを起動し、次を確認した。
+
+- localhost依存なく起動した。
+- Neovimと接続し、statusが `connected` になった。
+- `mode: normal` を取得した。
+- Neovim startup画面をCanvas上へ描画できた。
+
+初期表示は成立した。
+
+ただし、採用判定に必要な日本語IME、長時間編集、mouse、resize、DPI scaling、異常終了復旧は引き続き未確認である。
