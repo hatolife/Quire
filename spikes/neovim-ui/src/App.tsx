@@ -74,6 +74,7 @@ function App() {
 	let host!: HTMLDivElement;
 	let canvas!: HTMLCanvasElement;
 	let input!: HTMLTextAreaElement;
+	let preedit!: HTMLDivElement;
 	let resizeObserver: ResizeObserver | undefined;
 	let composing = false;
 	let committedCompositionText: string | null = null;
@@ -92,6 +93,7 @@ function App() {
 	const highlights = new Map<number, Highlight>();
 	const [status, setStatus] = createSignal("starting");
 	const [mode, setMode] = createSignal("unknown");
+	const [preeditText, setPreeditText] = createSignal("");
 
 	const sendInput = async (text: string) => {
 		if(!text){ return; }
@@ -226,6 +228,9 @@ function App() {
 		input.style.left = `${left}px`;
 		input.style.top = `${top}px`;
 		input.style.height = `${CELL_HEIGHT}px`;
+		preedit.style.left = `${left}px`;
+		preedit.style.top = `${top}px`;
+		preedit.style.height = `${CELL_HEIGHT}px`;
 	};
 
 	const renderGrid = () => {
@@ -415,7 +420,10 @@ function App() {
 	};
 
 	const handleInput = (event: InputEvent) => {
-		if(composing || event.isComposing){ return; }
+		if(composing || event.isComposing){
+			setPreeditText(input.value);
+			return;
+		}
 		const text = input.value;
 		input.value = "";
 		if(committedCompositionText !== null){
@@ -428,9 +436,14 @@ function App() {
 		if(text){ void sendInput(text); }
 	};
 
+	const handleCompositionUpdate = (event: CompositionEvent) => {
+		setPreeditText(event.data || input.value);
+	};
+
 	const handleCompositionEnd = (event: CompositionEvent) => {
 		composing = false;
 		const text = event.data || input.value;
+		setPreeditText("");
 		input.value = "";
 		if(!text){ return; }
 		committedCompositionText = text;
@@ -490,6 +503,7 @@ function App() {
 				onContextMenu={event => event.preventDefault()}
 			>
 				<canvas ref={canvas} />
+				<div ref={preedit} class="ime-preedit" classList={{ active: !!preeditText() }}>{preeditText()}</div>
 				<textarea
 					ref={input}
 					class="ime-input"
@@ -499,7 +513,9 @@ function App() {
 					onCompositionStart={() => {
 						composing = true;
 						committedCompositionText = null;
+						setPreeditText("");
 					}}
+					onCompositionUpdate={event => handleCompositionUpdate(event as CompositionEvent)}
 					onCompositionEnd={event => handleCompositionEnd(event as CompositionEvent)}
 				/>
 			</div>
