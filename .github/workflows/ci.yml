@@ -36,118 +36,6 @@ jobs:
       - name: Run Neovim embed spike
         run: cargo run --manifest-path spikes/neovim-embed/Cargo.toml
 
-  neovim-ui-spike-build:
-    name: Neovim UI spike build
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          workspaces: spikes/neovim-ui/src-tauri -> target
-
-      - name: Install frontend dependencies
-        working-directory: spikes/neovim-ui
-        run: npm install
-
-      - name: Audit runtime dependencies
-        working-directory: spikes/neovim-ui
-        continue-on-error: true
-        run: npm audit --omit=dev --audit-level=critical
-
-      - name: Audit all dependencies
-        working-directory: spikes/neovim-ui
-        continue-on-error: true
-        run: npm audit --audit-level=critical
-
-      - name: Build frontend
-        working-directory: spikes/neovim-ui
-        run: npm run build
-
-      - name: Build Windows executable
-        run: cargo build --release --manifest-path spikes/neovim-ui/src-tauri/Cargo.toml
-
-      - name: Upload Neovim UI spike
-        uses: actions/upload-artifact@v7
-        with:
-          name: quire-neovim-ui-spike-windows
-          if-no-files-found: error
-          path: |
-            spikes/neovim-ui/src-tauri/target/release/quire-neovim-ui-spike.exe
-            spikes/neovim-ui/package-lock.json
-
-  multi-webview-spike-build:
-    name: Multi WebView spike build
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          workspaces: spikes/multi-webview/src-tauri -> target
-
-      - name: Install frontend dependencies
-        working-directory: spikes/multi-webview
-        run: npm install
-
-      - name: Build frontend
-        working-directory: spikes/multi-webview
-        run: npm run build
-
-      - name: Build Windows executable
-        run: cargo build --release --manifest-path spikes/multi-webview/src-tauri/Cargo.toml
-
-      - name: Upload Multi WebView spike
-        uses: actions/upload-artifact@v7
-        with:
-          name: quire-multi-webview-spike-windows
-          if-no-files-found: error
-          path: |
-            spikes/multi-webview/src-tauri/target/release/quire-multi-webview-spike.exe
-            spikes/multi-webview/package-lock.json
-
-  webview2-extensions-spike-build:
-    name: WebView2 Extensions spike build
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          workspaces: spikes/webview2-extensions/src-tauri -> target
-
-      - name: Build Windows executable
-        run: cargo build --release --manifest-path spikes/webview2-extensions/src-tauri/Cargo.toml
-
-      - name: Upload WebView2 Extensions spike
-        uses: actions/upload-artifact@v7
-        with:
-          name: quire-webview2-extensions-spike-windows
-          if-no-files-found: error
-          path: spikes/webview2-extensions/src-tauri/target/release/quire-webview2-extensions-spike.exe
-
   git-snapshot-isolation-spike:
     name: Git snapshot isolation spike
     runs-on: windows-latest
@@ -181,3 +69,62 @@ jobs:
 
       - name: Run external file changes spike
         run: cargo run --release --manifest-path spikes/external-file-changes/Cargo.toml
+
+  windows-gui-spikes:
+    name: Windows GUI spikes package
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: |
+            spikes/neovim-ui/src-tauri -> target
+            spikes/multi-webview/src-tauri -> target
+            spikes/webview2-extensions/src-tauri -> target
+
+      - name: Install Neovim UI frontend dependencies
+        working-directory: spikes/neovim-ui
+        run: npm install
+
+      - name: Install Multi WebView frontend dependencies
+        working-directory: spikes/multi-webview
+        run: npm install
+
+      - name: Build Neovim UI production executable
+        working-directory: spikes/neovim-ui
+        run: npm run tauri build -- --no-bundle
+
+      - name: Build Multi WebView production executable
+        working-directory: spikes/multi-webview
+        run: npm run tauri build -- --no-bundle
+
+      - name: Build WebView2 Extensions executable
+        run: cargo build --release --manifest-path spikes/webview2-extensions/src-tauri/Cargo.toml
+
+      - name: Assemble Windows spike package
+        shell: powershell
+        run: |
+          $package = "dist\quire-spikes-windows"
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item "spikes\neovim-ui\src-tauri\target\release\quire-neovim-ui-spike.exe" "$package\quire-neovim-ui-spike.exe"
+          Copy-Item "spikes\multi-webview\src-tauri\target\release\quire-multi-webview-spike.exe" "$package\quire-multi-webview-spike.exe"
+          Copy-Item "spikes\webview2-extensions\src-tauri\target\release\quire-webview2-extensions-spike.exe" "$package\quire-webview2-extensions-spike.exe"
+          Copy-Item "spikes\webview2-extensions\extension" "$package\extension" -Recurse
+          Get-ChildItem $package -Recurse | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Upload Windows GUI spikes
+        uses: actions/upload-artifact@v7
+        with:
+          name: quire-spikes-windows
+          if-no-files-found: error
+          path: dist/quire-spikes-windows
