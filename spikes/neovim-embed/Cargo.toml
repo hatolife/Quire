@@ -1,0 +1,9 @@
+[package]
+name = "quire-neovim-embed-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+rmpv = "1"

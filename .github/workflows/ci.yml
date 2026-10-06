@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  neovim-embed-spike:
+    name: Neovim embed spike
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install Neovim
+        shell: powershell
+        run: choco install neovim -y --no-progress
+
+      - name: Show Neovim version
+        shell: powershell
+        run: nvim --version
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path spikes/neovim-embed/Cargo.toml -- --check
+
+      - name: Run Neovim embed spike
+        run: cargo run --manifest-path spikes/neovim-embed/Cargo.toml
