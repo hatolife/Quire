@@ -273,7 +273,7 @@ desktop側はTauri/Solidの薄いApplication/UI境界とする。
 - native directory pickerからWorkspaceを開く。
 - Workspace直下およびdirectoryのlazy listing。
 - Markdown Documentを開く。
-- bootstrap text editorで編集する。
+- Neovim `--embed` Editor Adapterで編集する。
 - markdown-itによるPreview。
 - Document読込時のBLAKE3 revisionを保持する。
 - 保存時にdisk側revisionを再確認する。
@@ -284,16 +284,30 @@ desktop側はTauri/Solidの薄いApplication/UI境界とする。
 
 `quire-core` のunit testとWindows production buildはCIで成功している。
 
+Neovim UI Spikeの実装を本体Editor Adapterへ移植し、次を追加した。
+
+- `nvim --embed --clean` でWorkspace内Documentを開く。
+- `ext_linegrid` redrawをCanvasへ描画する。
+- keyboard / mouse / resize / 日本語IMEをNeovimへ転送する。
+- `nvim_buf_attach` のbuffer変更通知からPreview本文を更新する。
+- PreviewとEditorのscroll同期をsource line基準で行う。
+- 保存前にQuire側のBLAKE3 revisionを確認し、外部変更があればNeovimへwriteさせない。
+- `Ctrl+S` とUIの保存操作を同じ保存処理へ接続する。
+- Explorer / Editor / Previewのpane境界をdrag resize可能にする。
+- pane比率をTauriの端末ローカルconfigへ保存する。
+
+本体変更とSpike検証を別workflowへ分離し、本体変更でSpike群を再buildしないCI構成へ変更した。
+
 確認基準commit:
 
 ```text
-9e8d2def690a3648d3393bf5134c3e93bdc6ae56
+6e08dc3fc8a52e28f90e010f63fe230ef88cd90f
 ```
 
 Windows artifact:
 
 ```text
-quire-desktop-windows-v0.0.1.20261006161401.9e8d2de
+quire-desktop-windows-v0.0.1.20261006172646.6e08dc3
 ```
 
 Windows実機で次を確認した。
@@ -311,9 +325,9 @@ Windows実機で次を確認した。
 
 EditorとPreviewのscroll同期について、単純なscroll比率ではなくMarkdown blockのsource lineを基準に同期する実装を追加した。表、見出し、code block等でPreview側の高さが変わる場合も、隣接source anchor間を補間する。
 
-現時点のtextarea editorはApplication Skeletonを先に通すためのbootstrap実装であり、最終Editorではない。
+bootstrap textareaは本体から外し、Neovim Editor Adapterへ切り替えた。
 
-次にNeovim UI Spikeで成立した実装をEditor Adapter境界へ移植する。
+次は本体上でNeovim編集、IME、Preview更新、scroll同期、保存、pane resizeを実機確認する。
 
 ### 目的
 
@@ -508,34 +522,25 @@ CIやパッケージング機能の検証でSemVerが必須な場合だけ `v0.0
 
 ## 直近の次作業
 
-Milestone 1の5種類のSpikeは実装済みで、Windows CI上のbuild / 自動検証も通っている。
+Milestone 2のApplication Skeletonを本体上で継続する。
 
 次は次の順で進める。
 
-1. Neovim UI SpikeをWindows実機で確認する。
-	- 30分程度のMarkdown編集。
-	- 日本語IME。
-	- 全角文字、絵文字。
-	- mouse。
-	- resize。
-	- DPI scaling。
-	- 異常終了と再起動。
-2. Multi WebView Layout SpikeをWindows実機で確認する。
-	- pane resize。
-	- focus。
-	- keyboard shortcut競合。
-	- session。
-	- DPI scaling。
-	- 複数Browser pane。
-3. WebView2 Extensions SpikeをWindows実機で確認する。
-	- Manifest V3 content script。
-	- service worker。
-	- `storage.local`。
-	- reload / 再起動後の維持。
-	- browser UI依存extensionの制約。
-4. 実機結果を各 `docs/spikes/` 配下へ記録し、採用判断を確定する。
-5. Milestone 1の採用判断が揃ったらMilestone 2: Application Skeletonへ進む。
+1. 最新のQuire本体artifactをWindows実機で確認する。
+	- WorkspaceからMarkdownを開く。
+	- Neovimで通常編集する。
+	- 日本語IMEのpreedit / 変換確定。
+	- buffer変更がPreviewへ即時反映される。
+	- Editor→Preview / Preview→Editorのscroll同期。
+	- `Ctrl+S` と保存button。
+	- 外部変更Conflict。
+	- pane splitterのdrag resize。
+	- 再起動後にpane layoutが復元される。
+2. Neovim異常終了と再起動を本体Editor Adapterで扱う。
+3. Application Skeletonのloggingを追加する。
+4. PreviewのWorkspace内relative asset表示を実装する。
+5. Milestone 2の完了条件を満たしたらMilestone 3のVertical Sliceへ進む。
 
-Git Snapshot IsolationとExternal File Changesについては、基本方式の自動検証が成立済みである。
+Git Snapshot Isolation、External File Changes、Multi WebView、WebView2 ExtensionsはArchitecture Spikeで基本方式が成立済みである。
 
-ただし各READMEに列挙したedge caseはApplication Skeleton以降も継続して追加検証する。
+以後は必要になった時点で本体へ順次移植する。
