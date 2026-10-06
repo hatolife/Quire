@@ -49,6 +49,7 @@ function contentForEditor(content: string): string {
 }
 
 function App() {
+	let workspaceElement!: HTMLDivElement;
 	let previewElement!: HTMLElement;
 	let suppressEditorViewport = false;
 	let suppressPreviewScroll = false;
@@ -59,6 +60,8 @@ function App() {
 	const [draft, setDraft] = createSignal("");
 	const [status, setStatus] = createSignal("Workspaceを開いてください");
 	const [saving, setSaving] = createSignal(false);
+	const [explorerWidth, setExplorerWidth] = createSignal(260);
+	const [editorRatio, setEditorRatio] = createSignal(0.5);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
@@ -121,6 +124,41 @@ function App() {
 		void invoke("editor_set_top_line", { line })
 			.catch(error => setStatus("Editor viewport error: " + String(error)))
 			.finally(() => requestAnimationFrame(() => { suppressEditorViewport = false; }));
+	};
+
+	const beginExplorerResize = (event: PointerEvent) => {
+		event.preventDefault();
+		const startX = event.clientX;
+		const startWidth = explorerWidth();
+		const handleMove = (moveEvent: PointerEvent) => {
+			const next = Math.max(180, Math.min(420, startWidth + moveEvent.clientX - startX));
+			setExplorerWidth(next);
+		};
+		const handleUp = () => {
+			window.removeEventListener("pointermove", handleMove);
+			window.removeEventListener("pointerup", handleUp);
+		};
+		window.addEventListener("pointermove", handleMove);
+		window.addEventListener("pointerup", handleUp, { once: true });
+	};
+
+	const beginEditorPreviewResize = (event: PointerEvent) => {
+		event.preventDefault();
+		const rect = workspaceElement.getBoundingClientRect();
+		const explorer = explorerWidth();
+		const splitters = 8;
+		const remaining = Math.max(560, rect.width - explorer - splitters);
+		const handleMove = (moveEvent: PointerEvent) => {
+			const editorWidth = moveEvent.clientX - rect.left - explorer - 4;
+			const ratio = editorWidth / remaining;
+			setEditorRatio(Math.max(0.25, Math.min(0.75, ratio)));
+		};
+		const handleUp = () => {
+			window.removeEventListener("pointermove", handleMove);
+			window.removeEventListener("pointerup", handleUp);
+		};
+		window.addEventListener("pointermove", handleMove);
+		window.addEventListener("pointerup", handleUp, { once: true });
 	};
 
 	const chooseWorkspace = async () => {
@@ -200,7 +238,11 @@ function App() {
 					</main>
 				}
 			>
-				<div class="workspace">
+				<div
+					ref={workspaceElement}
+					class="workspace"
+					style={"grid-template-columns: " + explorerWidth() + "px 4px minmax(280px, " + editorRatio() + "fr) 4px minmax(280px, " + (1 - editorRatio()) + "fr)"}
+				>
 					<aside class="explorer">
 						<div class="pane-title">Explorer</div>
 						<div class="tree">
@@ -209,6 +251,12 @@ function App() {
 							</For>
 						</div>
 					</aside>
+					<div
+						class="pane-splitter"
+						role="separator"
+						aria-orientation="vertical"
+						onPointerDown={event => beginExplorerResize(event as PointerEvent)}
+					/>
 					<section class="editor-pane">
 						<div class="pane-title">
 							<span>{document()?.relativePath ?? "Editor"}</span>
@@ -230,6 +278,12 @@ function App() {
 							)}
 						</Show>
 					</section>
+					<div
+						class="pane-splitter"
+						role="separator"
+						aria-orientation="vertical"
+						onPointerDown={event => beginEditorPreviewResize(event as PointerEvent)}
+					/>
 					<section class="preview-pane">
 						<div class="pane-title">Preview</div>
 						<Show
