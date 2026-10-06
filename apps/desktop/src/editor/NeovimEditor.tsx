@@ -113,6 +113,8 @@ export default function NeovimEditor(props: Props) {
 	const highlights = new Map<number, Highlight>();
 	const [mode, setMode] = createSignal("unknown");
 	const [preeditText, setPreeditText] = createSignal("");
+	const [closedMessage, setClosedMessage] = createSignal<string | null>(null);
+	const [restarting, setRestarting] = createSignal(false);
 
 	const sendInput = async (text: string) => {
 		if(!text){ return; }
@@ -498,8 +500,12 @@ export default function NeovimEditor(props: Props) {
 		props.onTextChange(bufferLines.join("\n"));
 	};
 
-	onMount(async () => {
-		ensureCanvasSize();
+	const startEditorSession = async () => {
+		setRestarting(true);
+		setClosedMessage(null);
+		bufferLines = [];
+		grid = createGrid(80, 24);
+		highlights.clear();
 		const stream = new Channel<StreamMessage>();
 		stream.onmessage = message => {
 			if(!active){ return; }
@@ -511,7 +517,10 @@ export default function NeovimEditor(props: Props) {
 			}else if(message.kind === "error"){
 				props.onStatus(message.message);
 			}else{
-				props.onStatus("Neovim closed: " + message.message);
+				started = false;
+				const detail = message.message || "Neovim process closed.";
+				setClosedMessage(detail);
+				props.onStatus("Neovim closed: " + detail);
 			}
 		};
 
@@ -526,8 +535,18 @@ export default function NeovimEditor(props: Props) {
 			props.onStatus("Neovim connected");
 			input.focus();
 		}catch(error){
-			props.onStatus("Neovim start error: " + String(error));
+			started = false;
+			const detail = String(error);
+			setClosedMessage(detail);
+			props.onStatus("Neovim start error: " + detail);
+		}finally{
+			setRestarting(false);
 		}
+	};
+
+	onMount(async () => {
+		ensureCanvasSize();
+		await startEditorSession();
 
 		resizeObserver = new ResizeObserver(() => {
 			ensureCanvasSize();
@@ -555,6 +574,16 @@ export default function NeovimEditor(props: Props) {
 		>
 			<canvas ref={canvas} class="neovim-editor-canvas" />
 			<div ref={preedit} class="neovim-ime-preedit" classList={{ active: !!preeditText() }}>{preeditText()}</div>
+			{closedMessage() && (
+				<div class="neovim-editor-closed">
+					<strong>Neovimが終了しました</strong>
+					<span>{closedMessage()}</span>
+					<span>未保存のNeovim bufferは復元できません。disk上のDocumentを開き直します。</span>
+					<button disabled={restarting()} onClick={() => void startEditorSession()}>
+						{restarting() ? "再起動中..." : "Neovimを再起動"}
+					</button>
+				</div>
+			)}
 			<textarea
 				ref={input}
 				class="neovim-ime-input"
