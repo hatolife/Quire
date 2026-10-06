@@ -67,6 +67,10 @@ impl Workspace {
 		})
 	}
 
+	pub fn local_id(&self) -> String {
+		blake3::hash(self.root.to_string_lossy().as_bytes()).to_hex()[..32].to_string()
+	}
+
 	pub fn info(&self) -> WorkspaceInfo {
 		let name = self
 			.root
