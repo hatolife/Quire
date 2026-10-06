@@ -102,7 +102,7 @@ function contentForEditor(content: string): string {
 
 function App() {
 	let workspaceElement!: HTMLDivElement;
-	let previewElement!: HTMLElement;
+	let previewElement!: HTMLDivElement;
 	let suppressEditorViewport = false;
 	let suppressPreviewScroll = false;
 	let closeUnlisten: (() => void) | undefined;
