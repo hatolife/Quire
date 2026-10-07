@@ -989,3 +989,31 @@ button.primary {
 	content: "↳ ";
 	color: #777;
 }
+
+.history-documents-panel {
+	display: grid;
+	grid-template-rows: 36px minmax(120px, 260px);
+	border-top: 1px solid #444;
+	background: #151515;
+}
+
+.history-document-list {
+	overflow: auto;
+	padding: 4px 6px;
+}
+
+.history-document-entry {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 4px;
+	border-bottom: 1px solid #292929;
+	font-size: 12px;
+}
+
+.history-document-entry > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

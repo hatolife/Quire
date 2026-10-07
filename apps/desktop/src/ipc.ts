@@ -192,6 +192,10 @@ export function historyList(limit = 100) {
 	return invoke<Snapshot[]>("history_list", { limit });
 }
 
+export function historyListDocuments(snapshotId: string) {
+	return invoke<string[]>("history_list_documents", { snapshotId });
+}
+
 export function historyReadFile(snapshotId: string, relativePath: string) {
 	return invoke<string | null>("history_read_file", { snapshotId, relativePath });
 }

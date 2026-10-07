@@ -464,6 +464,17 @@ fn history_list(
 }
 
 #[tauri::command]
+fn history_list_documents(
+	snapshot_id: String,
+	app: tauri::AppHandle,
+	state: tauri::State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+	let _guard = state.history_lock.lock().map_err(|_| "History lock failed.".to_string())?;
+	let store = history_store(&app, &state)?;
+	store.list_documents(&snapshot_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn history_read_file(
 	snapshot_id: String,
 	relative_path: String,
@@ -484,7 +495,10 @@ fn history_restore_file(
 	state: tauri::State<'_, AppState>,
 	editor_state: tauri::State<'_, editor::EditorState>,
 ) -> Result<Document, String> {
-	editor::stop(&editor_state)?;
+	let current_editor_document = editor::current_document(&editor_state).ok();
+	if current_editor_document.as_deref() == Some(relative_path.as_str()) {
+		editor::stop(&editor_state)?;
+	}
 	let _guard = state.history_lock.lock().map_err(|_| "History lock failed.".to_string())?;
 	let store = history_store(&app, &state)?;
 	store
@@ -567,6 +581,7 @@ fn main() {
 			log_clear,
 			history_create_snapshot,
 			history_list,
+			history_list_documents,
 			history_read_file,
 			history_restore_file,
 		])

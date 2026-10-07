@@ -23,6 +23,7 @@ import {
 	editorSetTopLine,
 	historyCreateSnapshot,
 	historyList,
+	historyListDocuments,
 	historyReadFile,
 	historyRestoreFile,
 	logAppend,
@@ -365,6 +366,7 @@ function App() {
 	const [historyBusy, setHistoryBusy] = createSignal(false);
 	const [snapshots, setSnapshots] = createSignal<Snapshot[]>([]);
 	const [historyComparison, setHistoryComparison] = createSignal<{ snapshot: Snapshot; content: string | null } | null>(null);
+	const [historyDocuments, setHistoryDocuments] = createSignal<{ snapshot: Snapshot; paths: string[] } | null>(null);
 	const [settingsReady, setSettingsReady] = createSignal(false);
 	const [settingsOpen, setSettingsOpen] = createSignal(false);
 	const [autoSnapshotEnabled, setAutoSnapshotEnabled] = createSignal(true);
@@ -579,11 +581,28 @@ function App() {
 	const toggleHistory = () => {
 		const next = !historyOpen();
 		setHistoryOpen(next);
-		if(!next){ setHistoryComparison(null); }
+		if(!next){
+			setHistoryComparison(null);
+			setHistoryDocuments(null);
+		}
 		if(next){ void refreshHistory(); }
 	};
 
+	const showHistoryDocuments = async (snapshot: Snapshot) => {
+		setHistoryBusy(true);
+		try{
+			const paths = await historyListDocuments(snapshot.id);
+			setHistoryComparison(null);
+			setHistoryDocuments({ snapshot, paths });
+		}catch(error){
+			updateStatus("History Document list error: " + String(error), "error", "history");
+		}finally{
+			setHistoryBusy(false);
+		}
+	};
+
 	const compareHistorySnapshot = async (snapshot: Snapshot) => {
+		setHistoryDocuments(null);
 		const current = document();
 		if(!current){ return; }
 		setHistoryBusy(true);
@@ -592,6 +611,40 @@ function App() {
 			setHistoryComparison({ snapshot, content });
 		}catch(error){
 			updateStatus("History compare error: " + String(error), "error", "history");
+		}finally{
+			setHistoryBusy(false);
+		}
+	};
+
+	const restoreHistoryDocument = async (snapshot: Snapshot, relativePath: string) => {
+		if(dirty()){
+			updateStatus("History復元の前に現在の変更を保存してください。", "warn", "history");
+			return;
+		}
+		if(!window.confirm(snapshot.message + "\n\n" + relativePath + " をこのSnapshotから復元しますか？")){ return; }
+		setHistoryBusy(true);
+		try{
+			if(!await createSafetySnapshot("Before restore " + relativePath)){ return; }
+			let expectedRevision: string | undefined;
+			try{
+				expectedRevision = (await documentOpen(relativePath)).revision;
+			}catch{
+				// Missing document is the expected case when recovering a deleted file.
+			}
+			const restored = await historyRestoreFile(snapshot.id, relativePath, expectedRevision);
+			assetCache.clear();
+			await refreshExplorer();
+			invalidateSearchIndex("History document restore");
+			if(document()?.relativePath === relativePath){
+				setDocument(restored);
+				setDraft(contentForEditor(restored.content));
+				setExternalConflict(false);
+				setEditorSession(value => value + 1);
+				void refreshBacklinks(restored.relativePath);
+			}
+			updateStatus("Historyから復元しました: " + relativePath, "info", "history");
+		}catch(error){
+			updateStatus("History restore error: " + String(error), "error", "history");
 		}finally{
 			setHistoryBusy(false);
 		}
@@ -1697,6 +1750,7 @@ function App() {
 											<small>{new Date(snapshot.timestamp * 1000).toLocaleString()} · {snapshot.id.slice(0, 7)}</small>
 										</div>
 										<div class="history-entry-actions">
+											<button onClick={() => void showHistoryDocuments(snapshot)}>文書</button>
 											<button disabled={!document()} onClick={() => void compareHistorySnapshot(snapshot)}>比較</button>
 											<button disabled={!document() || dirty()} onClick={() => void restoreCurrentDocument(snapshot)}>復元</button>
 										</div>
@@ -1708,6 +1762,31 @@ function App() {
 							</Show>
 						</Show>
 					</div>
+					<Show when={historyDocuments()}>
+						{view => (
+							<div class="history-documents-panel">
+								<div class="history-comparison-header">
+									<strong>Snapshot Documents</strong>
+									<span>{view().snapshot.message}</span>
+									<span class="toolbar-spacer" />
+									<button onClick={() => setHistoryDocuments(null)}>閉じる</button>
+								</div>
+								<div class="history-document-list">
+									<For each={view().paths}>
+										{path => (
+											<div class="history-document-entry">
+												<span title={path}>{path}</span>
+												<button disabled={dirty() || historyBusy()} onClick={() => void restoreHistoryDocument(view().snapshot, path)}>復元</button>
+											</div>
+										)}
+									</For>
+									<Show when={view().paths.length === 0}>
+										<div class="history-empty">Markdown Documentはありません。</div>
+									</Show>
+								</div>
+							</div>
+						)}
+					</Show>
 					<Show when={historyComparison()}>
 						{comparison => (
 							<div class="history-comparison">

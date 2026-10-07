@@ -141,6 +141,27 @@ impl HistoryStore {
 		Ok(snapshots)
 	}
 
+	pub fn list_documents(&self, snapshot_id: &str) -> Result<Vec<String>, HistoryError> {
+		self.snapshot(snapshot_id)?;
+		let bytes = self.git_bytes(&["ls-tree", "-r", "-z", "--name-only", snapshot_id])?;
+		let mut documents = Vec::new();
+		for raw in bytes.split(|value| *value == 0) {
+			if raw.is_empty() {
+				continue;
+			}
+			let path = String::from_utf8(raw.to_vec())
+				.map_err(|error| HistoryError::GitFailed(format!("Snapshot path is not UTF-8: {error}")))?;
+			let extension = Path::new(&path)
+				.extension()
+				.and_then(|value| value.to_str())
+				.unwrap_or("");
+			if extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown") {
+				documents.push(path);
+			}
+		}
+		Ok(documents)
+	}
+
 	pub fn read_file_text(&self, snapshot_id: &str, relative_path: &str) -> Result<Option<String>, HistoryError> {
 		self.snapshot(snapshot_id)?;
 		let relative = normalize_relative(relative_path)?;
@@ -406,6 +427,25 @@ mod tests {
 		store.restore_file(&snapshot.id, "nested/deep/note.md", Some(&revision)).unwrap();
 
 		assert_eq!(fs::read(path).unwrap(), b"nested\r\nbytes\r\n");
+	}
+
+	#[test]
+	fn snapshot_lists_markdown_documents_only() {
+		if !git_available(){ return; }
+		let temp = tempfile::tempdir().unwrap();
+		let workspace = temp.path().join("workspace");
+		let history = temp.path().join("history.git");
+		fs::create_dir_all(workspace.join("nested")).unwrap();
+		fs::write(workspace.join("a.md"), "a").unwrap();
+		fs::write(workspace.join("nested").join("b.markdown"), "b").unwrap();
+		fs::write(workspace.join("image.png"), b"png").unwrap();
+		let store = HistoryStore::open(&workspace, &history).unwrap();
+		let snapshot = store.create_snapshot("Documents").unwrap();
+
+		assert_eq!(
+			store.list_documents(&snapshot.id).unwrap(),
+			vec!["a.md".to_string(), "nested/b.markdown".to_string()]
+		);
 	}
 
 	#[test]
