@@ -1833,6 +1833,21 @@ function App() {
 		}
 	};
 
+	const prepareToLeaveDocument = async (prompt: string) => {
+		if(!dirty()){ return true; }
+		if(documentAutoSaveEnabled() && !externalConflict()){
+			if(saving()){
+				updateStatus("保存処理中です。完了後にもう一度操作してください。", "info", "save");
+				return false;
+			}
+			await saveDocument();
+			if(!dirty()){ return true; }
+			updateStatus("Documentを保存できなかったため移動を中止しました。", "warn", "save");
+			return false;
+		}
+		return window.confirm(prompt);
+	};
+
 	const openDocument = async (relativePath: string, line?: number, heading?: string) => {
 		const current = document();
 		if(current?.relativePath === relativePath && heading){
@@ -1849,7 +1864,7 @@ function App() {
 			}
 			return;
 		}
-		if(dirty() && !window.confirm("未保存の変更があります。破棄して別の文書を開きますか？")){ return; }
+		if(!await prepareToLeaveDocument("未保存の変更があります。破棄して別の文書を開きますか？")){ return; }
 		try{
 			const opened = await documentOpen(relativePath);
 			const content = contentForEditor(opened.content);
@@ -1880,7 +1895,7 @@ function App() {
 
 		const current = document();
 		const closingCurrent = current?.relativePath === relativePath;
-		if(closingCurrent && dirty() && !window.confirm("未保存の変更があります。このタブを閉じて変更を破棄しますか？")){
+		if(closingCurrent && !await prepareToLeaveDocument("未保存の変更があります。このタブを閉じて変更を破棄しますか？")){
 			return;
 		}
 
