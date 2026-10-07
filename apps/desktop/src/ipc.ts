@@ -85,6 +85,8 @@ export type RecoveryDraft = {
 export type DesktopSettings = {
 	explorerWidth: number;
 	editorRatio: number;
+	explorerVisible: boolean;
+	rightPaneVisible: boolean;
 	lastWorkspace?: string | null;
 	lastDocument?: string | null;
 	openDocuments: string[];

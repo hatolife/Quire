@@ -832,6 +832,8 @@ function App() {
 	const [editorSession, setEditorSession] = createSignal(0);
 	const [explorerWidth, setExplorerWidth] = createSignal(260);
 	const [editorRatio, setEditorRatio] = createSignal(0.5);
+	const [explorerVisible, setExplorerVisible] = createSignal(true);
+	const [rightPaneVisible, setRightPaneVisible] = createSignal(true);
 	const [logOpen, setLogOpen] = createSignal(false);
 	const [logs, setLogs] = createSignal<LogEntry[]>([]);
 	const [searchQuery, setSearchQuery] = createSignal("");
@@ -1162,6 +1164,8 @@ function App() {
 	const resetPaneLayout = () => {
 		setExplorerWidth(260);
 		setEditorRatio(0.5);
+		setExplorerVisible(true);
+		setRightPaneVisible(true);
 		scheduleSettingsSave();
 	};
 
@@ -1280,6 +1284,8 @@ function App() {
 		if(!settingsReady()){ return; }
 		explorerWidth();
 		editorRatio();
+		explorerVisible();
+		rightPaneVisible();
 		workspace()?.root;
 		document()?.relativePath;
 		openDocuments();
@@ -1369,6 +1375,8 @@ function App() {
 	const currentSettings = (): DesktopSettings => ({
 		explorerWidth: explorerWidth(),
 		editorRatio: editorRatio(),
+		explorerVisible: explorerVisible(),
+		rightPaneVisible: rightPaneVisible(),
 		lastWorkspace: workspace()?.root ?? null,
 		lastDocument: document()?.relativePath ?? null,
 		openDocuments: openDocuments(),
@@ -1405,6 +1413,8 @@ function App() {
 			.then(async settings => {
 				setExplorerWidth(Math.max(180, Math.min(420, settings.explorerWidth)));
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
+				setExplorerVisible(settings.explorerVisible);
+				setRightPaneVisible(settings.rightPaneVisible);
 				setDocumentAutoSaveEnabled(settings.documentAutoSaveEnabled);
 				setDocumentAutoSaveDelayMs(Math.max(250, Math.min(10000, settings.documentAutoSaveDelayMs)));
 				setAutoSnapshotEnabled(settings.autoSnapshotEnabled);
@@ -1625,6 +1635,19 @@ function App() {
 		void editorSetTopLine(line)
 			.catch(error => updateStatus("Editor viewport error: " + String(error), "error", "editor"))
 			.finally(() => requestAnimationFrame(() => { suppressEditorViewport = false; }));
+	};
+
+	const workspaceGridTemplate = () => {
+		if(explorerVisible() && rightPaneVisible()){
+			return explorerWidth() + "px 4px minmax(280px, " + editorRatio() + "fr) 4px minmax(280px, " + (1 - editorRatio()) + "fr)";
+		}
+		if(explorerVisible()){
+			return explorerWidth() + "px 4px minmax(0, 1fr)";
+		}
+		if(rightPaneVisible()){
+			return "minmax(0, 1fr) 4px minmax(280px, 0.8fr)";
+		}
+		return "minmax(0, 1fr)";
 	};
 
 	const beginExplorerResize = (event: PointerEvent) => {
@@ -2379,6 +2402,18 @@ function App() {
 			},
 		},
 		{
+			id: "layout.explorer.toggle",
+			title: explorerVisible() ? "Explorerを隠す" : "Explorerを表示",
+			keywords: "layout explorer sidebar toggle",
+			run: () => setExplorerVisible(value => !value),
+		},
+		{
+			id: "layout.right.toggle",
+			title: rightPaneVisible() ? "右paneを隠す" : "右paneを表示",
+			keywords: "layout preview browser graph pane toggle",
+			run: () => setRightPaneVisible(value => !value),
+		},
+		{
 			id: "pane.preview",
 			title: "Preview paneを表示",
 			keywords: "markdown preview pane",
@@ -2447,9 +2482,9 @@ function App() {
 				<div
 					ref={workspaceElement}
 					class="workspace"
-					style={"grid-template-columns: " + explorerWidth() + "px 4px minmax(280px, " + editorRatio() + "fr) 4px minmax(280px, " + (1 - editorRatio()) + "fr)"}
+					style={"grid-template-columns: " + workspaceGridTemplate()}
 				>
-					<aside class="explorer">
+					<aside class="explorer" classList={{ hidden: !explorerVisible() }}>
 						<div class="pane-title explorer-title">
 							<button class="explorer-mode" classList={{ active: explorerMode() === "files" }} onClick={() => setExplorerMode("files")}>Files</button>
 							<button class="explorer-mode" classList={{ active: explorerMode() === "tags" }} onClick={() => setExplorerMode("tags")}>Tags</button>
@@ -2554,7 +2589,8 @@ function App() {
 						</div>
 					</aside>
 					<div
-						class="pane-splitter"
+						class="pane-splitter explorer-splitter"
+						classList={{ hidden: !explorerVisible() }}
 						role="separator"
 						aria-orientation="vertical"
 						onPointerDown={event => beginExplorerResize(event as PointerEvent)}
@@ -2612,12 +2648,13 @@ function App() {
 						</For>
 					</section>
 					<div
-						class="pane-splitter"
+						class="pane-splitter right-splitter"
+						classList={{ hidden: !rightPaneVisible() }}
 						role="separator"
 						aria-orientation="vertical"
 						onPointerDown={event => beginEditorPreviewResize(event as PointerEvent)}
 					/>
-					<section class="preview-pane">
+					<section class="preview-pane" classList={{ hidden: !rightPaneVisible() }}>
 						<div class="pane-title right-pane-title">
 							<button
 								class="pane-tab"
@@ -2678,7 +2715,7 @@ function App() {
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
 								<BrowserPane
-									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !templatePickerOpen() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
+									active={rightPaneVisible() && rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !templatePickerOpen() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
 									navigateTo={browserTargetUrl()}
 									onUrlChange={url => setBrowserTargetUrl(url)}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}

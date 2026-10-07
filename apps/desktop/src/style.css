@@ -1568,3 +1568,9 @@ button.primary {
 	background: #111;
 	color: #ddd;
 }
+
+.explorer.hidden,
+.preview-pane.hidden,
+.pane-splitter.hidden {
+	display: none;
+}

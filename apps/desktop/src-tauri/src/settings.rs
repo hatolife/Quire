@@ -8,6 +8,8 @@ use tauri::Manager;
 pub struct DesktopSettings {
 	pub explorer_width: f64,
 	pub editor_ratio: f64,
+	pub explorer_visible: bool,
+	pub right_pane_visible: bool,
 	pub last_workspace: Option<String>,
 	pub last_document: Option<String>,
 	pub open_documents: Vec<String>,
@@ -26,6 +28,8 @@ impl Default for DesktopSettings {
 		Self {
 			explorer_width: 260.0,
 			editor_ratio: 0.5,
+			explorer_visible: true,
+			right_pane_visible: true,
 			last_workspace: None,
 			last_document: None,
 			open_documents: Vec::new(),
