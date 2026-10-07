@@ -110,6 +110,10 @@ export function workspaceTags() {
 	return invoke<TagInfo[]>("workspace_tags");
 }
 
+export function workspaceDocuments() {
+	return invoke<string[]>("workspace_documents");
+}
+
 export function workspaceReindex() {
 	return invoke<number | null>("workspace_reindex");
 }

@@ -5,6 +5,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show }
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import BrowserPane from "./browser/BrowserPane";
 import CommandPalette, { type AppCommand } from "./commands/CommandPalette";
+import QuickOpen from "./commands/QuickOpen";
 import NeovimEditor from "./editor/NeovimEditor";
 import {
 	assetImport,
@@ -36,6 +37,7 @@ import {
 	recoverySave,
 	settingsLoad,
 	settingsSave,
+	workspaceDocuments,
 	workspaceList,
 	workspaceOpen,
 	workspaceReindex,
@@ -534,6 +536,8 @@ function App() {
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
 	const [browserTargetUrl, setBrowserTargetUrl] = createSignal<string | undefined>();
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
+	const [quickOpenVisible, setQuickOpenVisible] = createSignal(false);
+	const [quickOpenDocuments, setQuickOpenDocuments] = createSignal<string[]>([]);
 	const [recoveryDraft, setRecoveryDraft] = createSignal<RecoveryDraft | null>(null);
 	const [recoveryTrackingReady, setRecoveryTrackingReady] = createSignal(false);
 	const preview = createMemo(() => renderPreview(draft(), document()?.relativePath));
@@ -785,6 +789,21 @@ function App() {
 			updateStatus("History prune error: " + String(error), "error", "history");
 		}finally{
 			setHistoryBusy(false);
+		}
+	};
+
+	const openQuickOpen = async () => {
+		setCommandPaletteOpen(false);
+		setQuickOpenVisible(true);
+		if(!searchIndexReady()){
+			setQuickOpenDocuments([]);
+			return;
+		}
+		try{
+			setQuickOpenDocuments(await workspaceDocuments());
+		}catch(error){
+			setQuickOpenDocuments([]);
+			updateStatus("Quick Open error: " + String(error), "error", "index");
 		}
 	};
 
@@ -1064,7 +1083,13 @@ function App() {
 			const key = event.key.toLowerCase();
 			if(event.shiftKey && key === "p"){
 				event.preventDefault();
+				setQuickOpenVisible(false);
 				setCommandPaletteOpen(true);
+				return;
+			}
+			if(!event.shiftKey && key === "p"){
+				event.preventDefault();
+				void openQuickOpen();
 				return;
 			}
 			if(event.shiftKey && key === "f"){
@@ -1676,6 +1701,14 @@ function App() {
 			run: () => saveDocument(),
 		},
 		{
+			id: "workspace.quickOpen",
+			title: "Quick Open",
+			keywords: "open switch document file markdown",
+			shortcut: "Ctrl+P",
+			enabled: workspace() !== null,
+			run: () => openQuickOpen(),
+		},
+		{
 			id: "workspace.search.focus",
 			title: "検索欄へ移動",
 			keywords: "search find full text",
@@ -1930,7 +1963,7 @@ function App() {
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
 								<BrowserPane
-									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !settingsOpen() && !logOpen() && !recoveryDraft()}
+									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !settingsOpen() && !logOpen() && !recoveryDraft()}
 									navigateTo={browserTargetUrl()}
 									onUrlChange={url => setBrowserTargetUrl(url)}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
@@ -2020,6 +2053,15 @@ function App() {
 					</div>
 				</div>
 			</Show>
+
+			<QuickOpen
+				open={quickOpenVisible()}
+				documents={quickOpenDocuments()}
+				currentPath={document()?.relativePath}
+				indexReady={searchIndexReady()}
+				onOpen={path => openDocument(path)}
+				onClose={() => setQuickOpenVisible(false)}
+			/>
 
 			<CommandPalette
 				open={commandPaletteOpen()}

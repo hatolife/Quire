@@ -86,6 +86,12 @@ fn workspace_tags(state: tauri::State<'_, AppState>) -> Result<Vec<TagInfo>, Str
 }
 
 #[tauri::command]
+fn workspace_documents(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+	let index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+	Ok(index.as_ref().map(SearchIndex::documents).unwrap_or_default())
+}
+
+#[tauri::command]
 async fn workspace_reindex(app: tauri::AppHandle) -> Result<Option<usize>, String> {
 	let (generation, root) = {
 		let state = app.state::<AppState>();
@@ -607,6 +613,7 @@ fn main() {
 			workspace_watch_stop,
 			workspace_search,
 			workspace_tags,
+			workspace_documents,
 			workspace_reindex,
 			workspace_refresh_document_index,
 			document_backlinks,

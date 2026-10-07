@@ -153,6 +153,10 @@ impl SearchIndex {
 		self.tags.clone()
 	}
 
+	pub fn documents(&self) -> Vec<String> {
+		self.documents.iter().map(|document| document.relative_path.clone()).collect()
+	}
+
 	pub fn document_count(&self) -> usize {
 		self.documents.len()
 	}
