@@ -669,11 +669,12 @@ function App() {
 			const moved = await documentMove(current.relativePath, relativePath, current.revision);
 			assetCache.clear();
 			await refreshExplorer();
-			setDocument(moved);
-			setDraft(contentForEditor(moved.content));
+			setDocument(moved.document);
+			setDraft(contentForEditor(moved.document.content));
 			setExternalConflict(false);
-			void refreshBacklinks(moved.relativePath);
-			updateStatus(current.relativePath + " → " + moved.relativePath, "info", "document");
+			void refreshBacklinks(moved.document.relativePath);
+			const linkMessage = moved.updatedLinks.length > 0 ? " / Wiki Link更新 " + moved.updatedLinks.length + "件" : "";
+			updateStatus(current.relativePath + " → " + moved.document.relativePath + linkMessage, "info", "document");
 		}catch(error){
 			updateStatus("Document move error: " + String(error), "error", "document");
 		}

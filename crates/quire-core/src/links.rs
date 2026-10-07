@@ -19,6 +19,13 @@ pub struct Backlink {
 	pub preview: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentMove {
+	pub document: crate::Document,
+	pub updated_links: Vec<String>,
+}
+
 impl Workspace {
 	pub fn wiki_links(&self, source_relative_path: &str) -> Result<Vec<WikiLink>, WorkspaceError> {
 		let document = self.read_document(source_relative_path)?;
@@ -94,6 +101,133 @@ impl Workspace {
 		Ok(backlinks)
 	}
 
+	pub fn move_document_with_wiki_links(
+		&self,
+		from_relative_path: &str,
+		to_relative_path: &str,
+		expected_revision: &str,
+	) -> Result<DocumentMove, WorkspaceError> {
+		let source_document = self.read_document(from_relative_path)?;
+		if source_document.revision != expected_revision {
+			return Err(WorkspaceError::Conflict(from_relative_path.to_string()));
+		}
+
+		let plans = self.plan_wiki_link_move(from_relative_path, to_relative_path)?;
+		let moved = self.move_document(from_relative_path, to_relative_path, Some(expected_revision))?;
+		let mut applied: Vec<(String, String, String)> = Vec::new();
+
+		for plan in plans {
+			let effective_path = if plan.source_path == from_relative_path {
+				to_relative_path.to_string()
+			}else{
+				plan.source_path.clone()
+			};
+			let expected = if plan.source_path == from_relative_path {
+				moved.revision.clone()
+			}else{
+				plan.revision.clone()
+			};
+			match self.save_document(&effective_path, &plan.updated_content, &expected) {
+				Ok(saved) => applied.push((effective_path, plan.original_content, saved.revision)),
+				Err(error) => {
+					for (path, original_content, revision) in applied.into_iter().rev() {
+						let _ = self.save_document(&path, &original_content, &revision);
+					}
+					let current_moved = self.read_document(to_relative_path).ok();
+					if let Some(current_moved) = current_moved {
+						if current_moved.content != source_document.content {
+							let _ = self.save_document(to_relative_path, &source_document.content, &current_moved.revision);
+						}
+					}
+					let _ = self.move_document(to_relative_path, from_relative_path, None);
+					return Err(error);
+				}
+		}
+
+		let document = self.read_document(to_relative_path)?;
+		let updated_links = self
+			.plan_wiki_link_move_result_paths(from_relative_path, to_relative_path)?;
+		Ok(DocumentMove { document, updated_links })
+	}
+
+	fn plan_wiki_link_move(&self, from_relative_path: &str, to_relative_path: &str) -> Result<Vec<LinkRewritePlan>, WorkspaceError> {
+		let from = self.document_path(from_relative_path)?;
+		let from_relative = portable_path(
+			from.strip_prefix(&self.root)
+				.map_err(|_| WorkspaceError::InvalidRelativePath(from.display().to_string()))?,
+		);
+		let replacement = wiki_target_for_path(to_relative_path);
+		let mut files = Vec::new();
+		collect_markdown_files(&self.root, &mut files)?;
+		files.sort();
+
+		let mut plans = Vec::new();
+		for source in files {
+			let source_relative = portable_path(
+				source.strip_prefix(&self.root)
+					.map_err(|_| WorkspaceError::InvalidRelativePath(source.display().to_string()))?,
+			);
+			let document = self.read_document(&source_relative)?;
+			let mut changed = false;
+			let mut in_fence = false;
+			let mut output = String::with_capacity(document.content.len());
+			for chunk in document.content.split_inclusive('\n') {
+				let (line, ending) = chunk.strip_suffix('\n').map(|line| (line, "\n")).unwrap_or((chunk, ""));
+				if is_fence(line) {
+					in_fence = !in_fence;
+					output.push_str(line);
+					output.push_str(ending);
+					continue;
+				}
+				if in_fence {
+					output.push_str(line);
+					output.push_str(ending);
+					continue;
+				}
+				let rewritten = rewrite_links_in_line(line, |raw_target| {
+					self.resolve_wiki_target(&source_relative, raw_target)
+						.ok()
+						.flatten()
+						.as_deref()
+						== Some(from_relative.as_str())
+				}, &replacement);
+				changed |= rewritten != line;
+				output.push_str(&rewritten);
+				output.push_str(ending);
+			}
+			if changed {
+				plans.push(LinkRewritePlan {
+					source_path: source_relative,
+					revision: document.revision,
+					original_content: document.content,
+					updated_content: output,
+				});
+			}
+		}
+		Ok(plans)
+	}
+
+	fn plan_wiki_link_move_result_paths(&self, _from_relative_path: &str, to_relative_path: &str) -> Result<Vec<String>, WorkspaceError> {
+		let replacement = wiki_target_for_path(to_relative_path);
+		let mut files = Vec::new();
+		collect_markdown_files(&self.root, &mut files)?;
+		files.sort();
+		let mut updated = Vec::new();
+		for source in files {
+			let source_relative = portable_path(
+				source.strip_prefix(&self.root)
+					.map_err(|_| WorkspaceError::InvalidRelativePath(source.display().to_string()))?,
+			);
+			let content = fs::read_to_string(&source)?;
+			if content.lines().any(|line| extract_links(line).iter().any(|(target, _)| {
+				target.split('#').next().unwrap_or("").trim() == replacement
+			})) {
+				updated.push(source_relative);
+			}
+		}
+		Ok(updated)
+	}
+
 	pub fn resolve_wiki_target(&self, source_relative_path: &str, raw_target: &str) -> Result<Option<String>, WorkspaceError> {
 		let target = raw_target
 			.split('#')
@@ -152,6 +286,60 @@ impl Workspace {
 		}
 		Ok(None)
 	}
+}
+
+struct LinkRewritePlan {
+	source_path: String,
+	revision: String,
+	original_content: String,
+	updated_content: String,
+}
+
+fn wiki_target_for_path(relative_path: &str) -> String {
+	let path = Path::new(relative_path);
+	let without_extension = path.with_extension("");
+	portable_path(&without_extension)
+}
+
+fn rewrite_links_in_line(
+	line: &str,
+	mut matches_target: impl FnMut(&str) -> bool,
+	replacement: &str,
+) -> String {
+	let mut output = String::with_capacity(line.len());
+	let mut rest = line;
+	while let Some(start) = rest.find("[[") {
+		output.push_str(&rest[..start + 2]);
+		let after_start = &rest[start + 2..];
+		let Some(end) = after_start.find("]]") else {
+			output.push_str(after_start);
+			return output;
+		};
+		let body = &after_start[..end];
+		let mut alias_split = body.splitn(2, '|');
+		let target_and_heading = alias_split.next().unwrap_or("");
+		let alias = alias_split.next();
+		let mut heading_split = target_and_heading.splitn(2, '#');
+		let raw_target = heading_split.next().unwrap_or("").trim();
+		let heading = heading_split.next();
+		if matches_target(raw_target) {
+			output.push_str(replacement);
+			if let Some(heading) = heading {
+				output.push('#');
+				output.push_str(heading);
+			}
+			if let Some(alias) = alias {
+				output.push('|');
+				output.push_str(alias);
+			}
+		}else{
+			output.push_str(body);
+		}
+		output.push_str("]]");
+		rest = &after_start[end + 2..];
+	}
+	output.push_str(rest);
+	output
 }
 
 fn is_fence(line: &str) -> bool {
@@ -284,6 +472,30 @@ mod tests {
 		assert_eq!(backlinks.len(), 1);
 		assert_eq!(backlinks[0].source_path, "Source.md");
 		assert_eq!(backlinks[0].line, 1);
+	}
+
+	#[test]
+	fn moving_document_updates_resolved_wiki_links() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir_all(temp.path().join("notes")).unwrap();
+		fs::create_dir_all(temp.path().join("archive")).unwrap();
+		fs::write(temp.path().join("notes").join("Target.md"), "# Target").unwrap();
+		fs::write(
+			temp.path().join("Source.md"),
+			"[[notes/Target|label]] [[notes/Target#Heading]]\n~~~md\n[[notes/Target]]\n~~~\n",
+		).unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let target = workspace.read_document("notes/Target.md").unwrap();
+
+		let moved = workspace
+			.move_document_with_wiki_links("notes/Target.md", "archive/Renamed.md", &target.revision)
+			.unwrap();
+
+		assert_eq!(moved.document.relative_path, "archive/Renamed.md");
+		let source = fs::read_to_string(temp.path().join("Source.md")).unwrap();
+		assert!(source.contains("[[archive/Renamed|label]]"));
+		assert!(source.contains("[[archive/Renamed#Heading]]"));
+		assert!(source.contains("~~~md\n[[notes/Target]]\n~~~"));
 	}
 
 	#[test]

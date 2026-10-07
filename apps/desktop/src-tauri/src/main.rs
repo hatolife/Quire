@@ -4,7 +4,7 @@ mod settings;
 mod watcher;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use quire_core::{AssetImport, Backlink, Document, HistoryStore, SearchHit, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
+use quire_core::{AssetImport, Backlink, Document, DocumentMove, HistoryStore, SearchHit, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
 use serde::Serialize;
 use std::path::Path;
 use tauri::ipc::Channel;
@@ -97,11 +97,11 @@ fn document_move(
 	expected_revision: String,
 	state: tauri::State<'_, AppState>,
 	editor_state: tauri::State<'_, editor::EditorState>,
-) -> Result<Document, String> {
+) -> Result<DocumentMove, String> {
 	editor::stop(&editor_state)?;
 	with_workspace(&state, |workspace| {
 		workspace
-			.move_document(&from_relative_path, &to_relative_path, Some(&expected_revision))
+			.move_document_with_wiki_links(&from_relative_path, &to_relative_path, &expected_revision)
 			.map_err(|error| error.to_string())
 	})
 }

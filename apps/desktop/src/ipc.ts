@@ -26,6 +26,11 @@ export type Document = {
 	revision: string;
 };
 
+export type DocumentMove = {
+	document: Document;
+	updatedLinks: string[];
+};
+
 export type SearchHit = {
 	kind: "filename" | "content";
 	relativePath: string;
@@ -102,7 +107,7 @@ export function documentCreate(relativePath: string) {
 }
 
 export function documentMove(fromRelativePath: string, toRelativePath: string, expectedRevision: string) {
-	return invoke<Document>("document_move", { fromRelativePath, toRelativePath, expectedRevision });
+	return invoke<DocumentMove>("document_move", { fromRelativePath, toRelativePath, expectedRevision });
 }
 
 export function documentDelete(relativePath: string, expectedRevision: string) {
