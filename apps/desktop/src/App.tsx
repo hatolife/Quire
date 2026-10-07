@@ -2847,7 +2847,7 @@ function App() {
 										placeholder="Templates"
 									/>
 								</label>
-								<div class="settings-summary">通常のMarkdownをTemplateとして使用します。{{date}} / {{time}} / {{title}} を作成時に展開します。</div>
+								<div class="settings-summary">通常のMarkdownをTemplateとして使用します。{"{{date}}"} / {"{{time}}"} / {"{{title}}"} を作成時に展開します。</div>
 								<button disabled={!workspace()} onClick={() => void openTemplatePicker()}>Templateを選ぶ</button>
 							</section>
 							<section class="settings-section">
