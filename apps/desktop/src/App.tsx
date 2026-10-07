@@ -20,6 +20,7 @@ import {
 	editorSetTopLine,
 	historyCreateSnapshot,
 	historyList,
+	historyReadFile,
 	historyRestoreFile,
 	logAppend,
 	logClear,
@@ -142,6 +143,7 @@ function App() {
 	const [historyOpen, setHistoryOpen] = createSignal(false);
 	const [historyBusy, setHistoryBusy] = createSignal(false);
 	const [snapshots, setSnapshots] = createSignal<Snapshot[]>([]);
+	const [historyComparison, setHistoryComparison] = createSignal<{ snapshot: Snapshot; content: string | null } | null>(null);
 	const [settingsReady, setSettingsReady] = createSignal(false);
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
@@ -273,7 +275,22 @@ function App() {
 	const toggleHistory = () => {
 		const next = !historyOpen();
 		setHistoryOpen(next);
+		if(!next){ setHistoryComparison(null); }
 		if(next){ void refreshHistory(); }
+	};
+
+	const compareHistorySnapshot = async (snapshot: Snapshot) => {
+		const current = document();
+		if(!current){ return; }
+		setHistoryBusy(true);
+		try{
+			const content = await historyReadFile(snapshot.id, current.relativePath);
+			setHistoryComparison({ snapshot, content });
+		}catch(error){
+			updateStatus("History compare error: " + String(error), "error", "history");
+		}finally{
+			setHistoryBusy(false);
+		}
 	};
 
 	const restoreCurrentDocument = async (snapshot: Snapshot) => {
@@ -1062,7 +1079,10 @@ function App() {
 											<strong>{snapshot.message}</strong>
 											<small>{new Date(snapshot.timestamp * 1000).toLocaleString()} · {snapshot.id.slice(0, 7)}</small>
 										</div>
-										<button disabled={!document() || dirty()} onClick={() => void restoreCurrentDocument(snapshot)}>現在の文書を復元</button>
+										<div class="history-entry-actions">
+											<button disabled={!document()} onClick={() => void compareHistorySnapshot(snapshot)}>比較</button>
+											<button disabled={!document() || dirty()} onClick={() => void restoreCurrentDocument(snapshot)}>復元</button>
+										</div>
 									</div>
 								)}
 							</For>
@@ -1071,6 +1091,28 @@ function App() {
 							</Show>
 						</Show>
 					</div>
+					<Show when={historyComparison()}>
+						{comparison => (
+							<div class="history-comparison">
+								<div class="history-comparison-header">
+									<strong>{document()?.relativePath}</strong>
+									<span>{comparison().snapshot.message}</span>
+									<span class="toolbar-spacer" />
+									<button onClick={() => setHistoryComparison(null)}>比較を閉じる</button>
+								</div>
+								<div class="history-comparison-columns">
+									<section>
+										<h4>Snapshot</h4>
+										<pre>{comparison().content ?? "このSnapshotにはDocumentが存在しません。"}</pre>
+									</section>
+									<section>
+										<h4>Current</h4>
+										<pre>{draft()}</pre>
+									</section>
+								</div>
+							</div>
+						)}
+					</Show>
 				</div>
 			</Show>
 

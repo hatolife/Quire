@@ -296,6 +296,17 @@ fn history_list(
 }
 
 #[tauri::command]
+fn history_read_file(
+	snapshot_id: String,
+	relative_path: String,
+	app: tauri::AppHandle,
+	state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, String> {
+	let store = history_store(&app, &state)?;
+	store.read_file_text(&snapshot_id, &relative_path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn history_restore_file(
 	snapshot_id: String,
 	relative_path: String,
@@ -371,6 +382,7 @@ fn main() {
 			log_clear,
 			history_create_snapshot,
 			history_list,
+			history_read_file,
 			history_restore_file,
 		])
 		.run(tauri::generate_context!())

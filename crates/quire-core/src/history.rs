@@ -133,6 +133,23 @@ impl HistoryStore {
 		Ok(snapshots)
 	}
 
+	pub fn read_file_text(&self, snapshot_id: &str, relative_path: &str) -> Result<Option<String>, HistoryError> {
+		self.snapshot(snapshot_id)?;
+		let relative = normalize_relative(relative_path)?;
+		let spec = format!("{snapshot_id}:{}", portable_path(&relative));
+		let output = self
+			.command(None)
+			.args(["show", &spec])
+			.output()
+			.map_err(|error| HistoryError::GitUnavailable(error.to_string()))?;
+		if !output.status.success() {
+			return Ok(None);
+		}
+		String::from_utf8(output.stdout)
+			.map(Some)
+			.map_err(|error| HistoryError::GitFailed(format!("Snapshot file is not UTF-8: {error}")))
+	}
+
 	pub fn restore_file(
 		&self,
 		snapshot_id: &str,
@@ -345,6 +362,24 @@ mod tests {
 
 		assert_eq!(fs::read(workspace.join("note.md")).unwrap(), b"line1\r\nline2\r\n");
 		assert_eq!(store.list_snapshots(10).unwrap().len(), 2);
+	}
+
+	#[test]
+	fn snapshot_file_text_returns_content_or_none() {
+		if !git_available(){ return; }
+		let temp = tempfile::tempdir().unwrap();
+		let workspace = temp.path().join("workspace");
+		let history = temp.path().join("history.git");
+		fs::create_dir(&workspace).unwrap();
+		fs::write(workspace.join("note.md"), "snapshot text\n").unwrap();
+		let store = HistoryStore::open(&workspace, &history).unwrap();
+		let snapshot = store.create_snapshot("First").unwrap();
+
+		assert_eq!(
+			store.read_file_text(&snapshot.id, "note.md").unwrap().as_deref(),
+			Some("snapshot text\n")
+		);
+		assert_eq!(store.read_file_text(&snapshot.id, "missing.md").unwrap(), None);
 	}
 
 	#[test]

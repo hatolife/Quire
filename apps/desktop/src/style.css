@@ -700,3 +700,60 @@ button.primary {
 	padding: 16px 10px;
 	color: #777;
 }
+
+.history-entry-actions {
+	display: flex;
+	gap: 4px;
+}
+
+.history-comparison {
+	display: grid;
+	grid-template-rows: 36px minmax(0, 1fr);
+	min-height: 260px;
+	border-top: 1px solid #444;
+	background: #151515;
+}
+
+.history-comparison-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 8px;
+	border-bottom: 1px solid #333;
+	font-size: 11px;
+}
+
+.history-comparison-columns {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	min-height: 0;
+}
+
+.history-comparison-columns section {
+	min-width: 0;
+	min-height: 0;
+	display: grid;
+	grid-template-rows: 28px 1fr;
+	border-right: 1px solid #333;
+}
+
+.history-comparison-columns section:last-child {
+	border-right: 0;
+}
+
+.history-comparison-columns h4 {
+	margin: 0;
+	padding: 6px 8px;
+	color: #999;
+	font-size: 11px;
+}
+
+.history-comparison-columns pre {
+	margin: 0;
+	padding: 8px;
+	overflow: auto;
+	background: #111;
+	color: #ccc;
+	font: 12px/1.5 "Cascadia Mono", Consolas, monospace;
+	white-space: pre;
+}
