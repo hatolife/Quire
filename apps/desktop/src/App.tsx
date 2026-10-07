@@ -506,6 +506,54 @@ function renderPreview(source: string, sourceDocument?: string, allowDocumentEmb
 	return renderFrontMatter(parsed.frontMatter) + markdown.renderer.render(tokens, markdown.options, environment);
 }
 
+type DocumentHeading = {
+	line: number;
+	level: number;
+	text: string;
+};
+
+function extractDocumentHeadings(source: string): DocumentHeading[] {
+	const parsed = splitFrontMatter(source);
+	const lines = parsed.body.split("\n");
+	const headings: DocumentHeading[] = [];
+	let inFence = false;
+	const backtickFence = String.fromCharCode(96, 96, 96);
+
+	for(let index = 0; index < lines.length; ++index){
+		const line = lines[index];
+		const trimmed = line.trimStart();
+		if(trimmed.startsWith(backtickFence) || trimmed.startsWith("~~~")){
+			inFence = !inFence;
+			continue;
+		}
+		if(inFence){ continue; }
+
+		const atx = line.match(/^[ \t]{0,3}(#{1,6})[ \t]+(.+?)\s*$/);
+		if(atx){
+			headings.push({
+				line: parsed.lineOffset + index + 1,
+				level: atx[1].length,
+				text: cleanHeadingText(atx[2]),
+			});
+			continue;
+		}
+
+		if(index + 1 < lines.length && line.trim()){
+			const underline = lines[index + 1];
+			const setext = underline.match(/^[ \t]{0,3}(=+|-+)[ \t]*$/);
+			if(setext){
+				headings.push({
+					line: parsed.lineOffset + index + 1,
+					level: setext[1][0] === "=" ? 1 : 2,
+					text: cleanHeadingText(line),
+				});
+				++index;
+			}
+		}
+	}
+	return headings.filter(heading => heading.text.length > 0);
+}
+
 function contentForEditor(content: string): string {
 	const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 	return normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
@@ -718,7 +766,7 @@ function App() {
 	const [searchIndexReady, setSearchIndexReady] = createSignal(false);
 	const [searchIndexBuilding, setSearchIndexBuilding] = createSignal(false);
 	const [tags, setTags] = createSignal<TagInfo[]>([]);
-	const [explorerMode, setExplorerMode] = createSignal<"files" | "tags">("files");
+	const [explorerMode, setExplorerMode] = createSignal<"files" | "tags" | "outline">("files");
 	const [initialEditorLine, setInitialEditorLine] = createSignal<number | undefined>();
 	const [backlinks, setBacklinks] = createSignal<Backlink[]>([]);
 	const [historyOpen, setHistoryOpen] = createSignal(false);
@@ -740,6 +788,7 @@ function App() {
 	const [recoveryTrackingReady, setRecoveryTrackingReady] = createSignal(false);
 	const [draggingImageFiles, setDraggingImageFiles] = createSignal(false);
 	const preview = createMemo(() => renderPreview(draft(), document()?.relativePath));
+	const documentHeadings = createMemo(() => extractDocumentHeadings(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
 	const decodeAssetSource = (source: string) => {
@@ -930,6 +979,20 @@ function App() {
 		}catch(error){
 			invalidateSearchIndex(reason);
 			updateStatus("Document index refresh error: " + String(error), "error", "index");
+		}
+	};
+
+	const navigateOutline = async (heading: DocumentHeading) => {
+		if(!document()){ return; }
+		try{
+			await editorGotoLine(heading.line);
+			updateStatus(
+				(document()?.relativePath ?? "") + "#" + heading.text,
+				"info",
+				"outline",
+			);
+		}catch(error){
+			updateStatus("Outline navigation error: " + String(error), "error", "outline");
 		}
 	};
 
@@ -2176,6 +2239,7 @@ function App() {
 						<div class="pane-title explorer-title">
 							<button class="explorer-mode" classList={{ active: explorerMode() === "files" }} onClick={() => setExplorerMode("files")}>Files</button>
 							<button class="explorer-mode" classList={{ active: explorerMode() === "tags" }} onClick={() => setExplorerMode("tags")}>Tags</button>
+							<button class="explorer-mode" classList={{ active: explorerMode() === "outline" }} onClick={() => setExplorerMode("outline")}>Outline</button>
 							<span class="toolbar-spacer" />
 							<button class="pane-action" title="新規Markdown" onClick={() => void createDocument()}>＋</button>
 							<button class="pane-action" title="再読込" onClick={() => void refreshExplorer()}>↻</button>
@@ -2197,22 +2261,49 @@ function App() {
 									<Show
 										when={explorerMode() === "files"}
 										fallback={
-											<div class="tag-list">
-												<For each={tags()}>
-													{tag => (
-														<button class="tag-entry" onClick={() => {
-															setSearchQuery("tag:" + tag.name);
-															explorerSearchInput?.focus();
-														}}>
-															<span>#{tag.name}</span>
-															<small>{tag.count}</small>
-														</button>
-													)}
-												</For>
-												<Show when={searchIndexReady() && tags().length === 0}>
-													<div class="search-state">タグはありません</div>
-												</Show>
-											</div>
+											<Show
+												when={explorerMode() === "tags"}
+												fallback={
+													<div class="outline-list">
+														<For each={documentHeadings()}>
+															{heading => (
+																<button
+																	class="outline-entry"
+																	style={{ "--outline-level": String(heading.level) }}
+																	title={"L" + heading.line + " " + heading.text}
+																	onClick={() => void navigateOutline(heading)}
+																>
+																	<span>{heading.text}</span>
+																	<small>L{heading.line}</small>
+																</button>
+															)}
+														</For>
+														<Show when={!document()}>
+															<div class="search-state">Documentを開くと見出しを表示します</div>
+														</Show>
+														<Show when={document() && documentHeadings().length === 0}>
+															<div class="search-state">見出しはありません</div>
+														</Show>
+													</div>
+												}
+											>
+												<div class="tag-list">
+													<For each={tags()}>
+														{tag => (
+															<button class="tag-entry" onClick={() => {
+																setSearchQuery("tag:" + tag.name);
+																explorerSearchInput?.focus();
+															}}>
+																<span>#{tag.name}</span>
+																<small>{tag.count}</small>
+															</button>
+														)}
+													</For>
+													<Show when={searchIndexReady() && tags().length === 0}>
+														<div class="search-state">タグはありません</div>
+													</Show>
+												</div>
+											</Show>
 										}
 									>
 										<For each={entries()}>
