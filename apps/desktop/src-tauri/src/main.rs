@@ -86,17 +86,30 @@ fn workspace_tags(state: tauri::State<'_, AppState>) -> Result<Vec<TagInfo>, Str
 }
 
 #[tauri::command]
-fn workspace_reindex(state: tauri::State<'_, AppState>) -> Result<Option<usize>, String> {
-	let generation = state.search_generation.load(Ordering::SeqCst);
-	let root = with_workspace(&state, |workspace| Ok(std::path::PathBuf::from(workspace.info().root)))?;
-	let workspace = Workspace::open(root).map_err(|error| error.to_string())?;
-	let rebuilt_search = workspace.build_search_index().map_err(|error| error.to_string())?;
-	let rebuilt_links = workspace.build_link_index().map_err(|error| error.to_string())?;
-	let count = rebuilt_search.document_count();
+async fn workspace_reindex(app: tauri::AppHandle) -> Result<Option<usize>, String> {
+	let (generation, root) = {
+		let state = app.state::<AppState>();
+		let generation = state.search_generation.load(Ordering::SeqCst);
+		let root = with_workspace(&state, |workspace| Ok(std::path::PathBuf::from(workspace.info().root)))?;
+		(generation, root)
+	};
 
+	let rebuilt = tauri::async_runtime::spawn_blocking(move || -> Result<(SearchIndex, LinkIndex, usize), String> {
+		let workspace = Workspace::open(root).map_err(|error| error.to_string())?;
+		let rebuilt_search = workspace.build_search_index().map_err(|error| error.to_string())?;
+		let rebuilt_links = workspace.build_link_index().map_err(|error| error.to_string())?;
+		let count = rebuilt_search.document_count();
+		Ok((rebuilt_search, rebuilt_links, count))
+	})
+	.await
+	.map_err(|error| format!("Workspace index worker failed: {error}"))??;
+
+	let (rebuilt_search, rebuilt_links, count) = rebuilt;
+	let state = app.state::<AppState>();
 	if state.search_generation.load(Ordering::SeqCst) != generation {
 		return Ok(None);
 	}
+
 	let mut search_index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
 	let mut link_index = state.link_index.lock().map_err(|_| "Link index state lock failed.".to_string())?;
 	if state.search_generation.load(Ordering::SeqCst) != generation {
