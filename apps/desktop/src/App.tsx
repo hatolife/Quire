@@ -24,6 +24,7 @@ import {
 	historyCreateSnapshot,
 	historyList,
 	historyListDocuments,
+	historyPrune,
 	historyReadFile,
 	historyRestoreFile,
 	logAppend,
@@ -411,6 +412,7 @@ function App() {
 	const [settingsOpen, setSettingsOpen] = createSignal(false);
 	const [autoSnapshotEnabled, setAutoSnapshotEnabled] = createSignal(true);
 	const [autoSnapshotDelaySeconds, setAutoSnapshotDelaySeconds] = createSignal(5);
+	const [historyRetentionSnapshots, setHistoryRetentionSnapshots] = createSignal(200);
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
 	const [browserTargetUrl, setBrowserTargetUrl] = createSignal<string | undefined>();
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
@@ -589,7 +591,7 @@ function App() {
 		if(!workspace()){ return false; }
 		setHistoryBusy(true);
 		try{
-			const snapshot = await historyCreateSnapshot(message);
+			const snapshot = await historyCreateSnapshot(message, historyRetentionSnapshots());
 			updateStatus("Snapshot created: " + snapshot.id.slice(0, 7), "info", "history");
 			if(historyOpen()){ await refreshHistory(); }
 			return true;
@@ -614,6 +616,24 @@ function App() {
 			autoSnapshotTimer = undefined;
 			void createHistorySnapshot("Auto save " + relativePath);
 		}, autoSnapshotDelaySeconds() * 1000);
+	};
+
+	const pruneHistoryNow = async () => {
+		if(!workspace() || historyBusy()){ return; }
+		setHistoryBusy(true);
+		try{
+			const removed = await historyPrune(historyRetentionSnapshots());
+			updateStatus(
+				removed > 0 ? "Historyを整理しました: " + removed + "件削除" : "Historyは保持上限内です。",
+				"info",
+				"history",
+			);
+			if(historyOpen()){ await refreshHistory(); }
+		}catch(error){
+			updateStatus("History prune error: " + String(error), "error", "history");
+		}finally{
+			setHistoryBusy(false);
+		}
 	};
 
 	const resetPaneLayout = () => {
@@ -741,6 +761,7 @@ function App() {
 		document()?.relativePath;
 		autoSnapshotEnabled();
 		autoSnapshotDelaySeconds();
+		historyRetentionSnapshots();
 		rightPaneMode();
 		browserTargetUrl();
 		scheduleSettingsSave();
@@ -802,6 +823,7 @@ function App() {
 		lastDocument: document()?.relativePath ?? null,
 		autoSnapshotEnabled: autoSnapshotEnabled(),
 		autoSnapshotDelaySeconds: autoSnapshotDelaySeconds(),
+		historyRetentionSnapshots: historyRetentionSnapshots(),
 		lastRightPane: rightPaneMode(),
 		lastBrowserUrl: browserTargetUrl() ?? null,
 	});
@@ -831,6 +853,7 @@ function App() {
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
 				setAutoSnapshotEnabled(settings.autoSnapshotEnabled);
 				setAutoSnapshotDelaySeconds(Math.max(1, Math.min(300, settings.autoSnapshotDelaySeconds)));
+				setHistoryRetentionSnapshots(Math.max(10, Math.min(10000, settings.historyRetentionSnapshots)));
 				setRightPaneMode(settings.lastRightPane === "browser" ? "browser" : "preview");
 				if(settings.lastBrowserUrl && /^https?:\/\//i.test(settings.lastBrowserUrl)){
 					setBrowserTargetUrl(settings.lastBrowserUrl);
@@ -1780,6 +1803,21 @@ function App() {
 										}}
 									/>
 								</label>
+								<label class="settings-field">
+									<span>Snapshot保持件数</span>
+									<input
+										type="number"
+										min="10"
+										max="10000"
+										value={historyRetentionSnapshots()}
+										onChange={event => {
+											const value = Number.parseInt(event.currentTarget.value, 10);
+											setHistoryRetentionSnapshots(Number.isFinite(value) ? Math.max(10, Math.min(10000, value)) : 200);
+										}}
+									/>
+								</label>
+								<div class="settings-summary">上限を約20%超えた時に自動整理します。.quireignoreでHistory/index対象外を指定できます。</div>
+								<button disabled={!workspace() || historyBusy()} onClick={() => void pruneHistoryNow()}>今すぐ保持上限を適用</button>
 							</section>
 							<section class="settings-section">
 								<h3>Layout</h3>

@@ -131,6 +131,50 @@ impl HistoryStore {
 		self.snapshot(commit.trim())
 	}
 
+	pub fn snapshot_count(&self) -> Result<usize, HistoryError> {
+		if self.resolve_latest().is_err() {
+			return Ok(0);
+		}
+		let output = self.git(&["rev-list", "--count", HISTORY_REF])?;
+		output
+			.trim()
+			.parse::<usize>()
+			.map_err(|error| HistoryError::GitFailed(format!("Invalid snapshot count: {error}")))
+	}
+
+	pub fn prune_snapshots(&self, keep: usize) -> Result<usize, HistoryError> {
+		if keep == 0 {
+			return Err(HistoryError::InvalidSnapshot("History retention must be at least 1.".to_string()));
+		}
+		let total = self.snapshot_count()?;
+		if total <= keep {
+			return Ok(0);
+		}
+
+		let kept = self.list_snapshots(keep)?;
+		let mut parent: Option<String> = None;
+		for snapshot in kept.iter().rev() {
+			let tree = self.git(&["rev-parse", &format!("{}^{{tree}}", snapshot.id)])?;
+			let commit = self.commit_tree_with_timestamp(
+				tree.trim(),
+				parent.as_deref(),
+				&snapshot.message,
+				snapshot.timestamp,
+			)?;
+			parent = Some(commit);
+		}
+		let latest = parent.ok_or_else(|| HistoryError::InvalidSnapshot("No snapshots to retain.".to_string()))?;
+		self.git(&["update-ref", HISTORY_REF, latest.trim()])?;
+		self.git(&["reflog", "expire", "--expire=now", "--all"])?;
+		self.git(&["gc", "--prune=now"])?;
+		Ok(total - keep)
+	}
+
+	pub fn latest_snapshot(&self) -> Result<Snapshot, HistoryError> {
+		let latest = self.resolve_latest()?;
+		self.snapshot(latest.trim())
+	}
+
 	pub fn list_snapshots(&self, limit: usize) -> Result<Vec<Snapshot>, HistoryError> {
 		if limit == 0 || self.resolve_latest().is_err() {
 			return Ok(Vec::new());
@@ -265,6 +309,45 @@ impl HistoryStore {
 			return Err(HistoryError::GitFailed(command_error("git", &output)));
 		}
 		Ok(output.stdout)
+	}
+
+	fn commit_tree_with_timestamp(
+		&self,
+		tree: &str,
+		parent: Option<&str>,
+		message: &str,
+		timestamp: i64,
+	) -> Result<String, HistoryError> {
+		let mut args = vec!["commit-tree".to_string(), tree.to_string()];
+		if let Some(parent) = parent {
+			args.push("-p".to_string());
+			args.push(parent.to_string());
+		}
+		let date = format!("@{timestamp} +0000");
+		let mut child = self
+			.command(None)
+			.args(&args)
+			.stdin(Stdio::piped())
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.env("GIT_AUTHOR_NAME", "Quire")
+			.env("GIT_AUTHOR_EMAIL", "quire@localhost")
+			.env("GIT_COMMITTER_NAME", "Quire")
+			.env("GIT_COMMITTER_EMAIL", "quire@localhost")
+			.env("GIT_AUTHOR_DATE", &date)
+			.env("GIT_COMMITTER_DATE", &date)
+			.spawn()
+			.map_err(|error| HistoryError::GitUnavailable(error.to_string()))?;
+		if let Some(stdin) = child.stdin.as_mut() {
+			stdin.write_all(message.as_bytes())?;
+		}
+		let output = child.wait_with_output()?;
+		if !output.status.success() {
+			return Err(HistoryError::GitFailed(command_error("git commit-tree", &output)));
+		}
+		String::from_utf8(output.stdout)
+			.map(|value| value.trim().to_string())
+			.map_err(|error| HistoryError::GitFailed(format!("Git returned non UTF-8 output: {error}")))
 	}
 
 	fn git_strings_with_stdin(&self, args: &[String], input: &[u8], index: Option<&Path>) -> Result<String, HistoryError> {
@@ -449,6 +532,37 @@ mod tests {
 		assert_eq!(
 			store.list_documents(&snapshot.id).unwrap(),
 			vec!["a.md".to_string(), "nested/b.markdown".to_string()]
+		);
+	}
+
+	#[test]
+	fn prune_snapshots_keeps_latest_history_and_timestamps() {
+		if !git_available(){ return; }
+		let temp = tempfile::tempdir().unwrap();
+		let workspace = temp.path().join("workspace");
+		let history = temp.path().join("history.git");
+		fs::create_dir(&workspace).unwrap();
+		let store = HistoryStore::open(&workspace, &history).unwrap();
+
+		for index in 0..5 {
+			fs::write(workspace.join("note.md"), format!("version {index}\n")).unwrap();
+			store.create_snapshot(&format!("Snapshot {index}")).unwrap();
+		}
+		let before = store.list_snapshots(5).unwrap();
+		let expected = before[..3].iter().map(|snapshot| {
+			(snapshot.timestamp, snapshot.message.clone())
+		}).collect::<Vec<_>>();
+
+		assert_eq!(store.prune_snapshots(3).unwrap(), 2);
+		assert_eq!(store.snapshot_count().unwrap(), 3);
+		let after = store.list_snapshots(10).unwrap();
+		assert_eq!(
+			after.iter().map(|snapshot| (snapshot.timestamp, snapshot.message.clone())).collect::<Vec<_>>(),
+			expected
+		);
+		assert_eq!(
+			store.read_file_text(&after[0].id, "note.md").unwrap().as_deref(),
+			Some("version 4\n")
 		);
 	}
 

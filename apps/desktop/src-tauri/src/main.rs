@@ -463,12 +463,32 @@ fn log_clear(state: tauri::State<'_, logging::LogState>) -> Result<(), String> {
 #[tauri::command]
 fn history_create_snapshot(
 	message: String,
+	retention_limit: usize,
 	app: tauri::AppHandle,
 	state: tauri::State<'_, AppState>,
 ) -> Result<Snapshot, String> {
 	let _guard = state.history_lock.lock().map_err(|_| "History lock failed.".to_string())?;
 	let store = history_store(&app, &state)?;
-	store.create_snapshot(&message).map_err(|error| error.to_string())
+	let created = store.create_snapshot(&message).map_err(|error| error.to_string())?;
+	let keep = retention_limit.max(1);
+	let threshold = keep.saturating_add((keep / 5).max(20));
+	if store.snapshot_count().map_err(|error| error.to_string())? > threshold {
+		store.prune_snapshots(keep).map_err(|error| error.to_string())?;
+		store.latest_snapshot().map_err(|error| error.to_string())
+	}else{
+		Ok(created)
+	}
+}
+
+#[tauri::command]
+fn history_prune(
+	keep: usize,
+	app: tauri::AppHandle,
+	state: tauri::State<'_, AppState>,
+) -> Result<usize, String> {
+	let _guard = state.history_lock.lock().map_err(|_| "History lock failed.".to_string())?;
+	let store = history_store(&app, &state)?;
+	store.prune_snapshots(keep.max(1)).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -600,6 +620,7 @@ fn main() {
 			log_recent,
 			log_clear,
 			history_create_snapshot,
+			history_prune,
 			history_list,
 			history_list_documents,
 			history_read_file,

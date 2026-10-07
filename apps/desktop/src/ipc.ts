@@ -73,6 +73,7 @@ export type DesktopSettings = {
 	lastDocument?: string | null;
 	autoSnapshotEnabled: boolean;
 	autoSnapshotDelaySeconds: number;
+	historyRetentionSnapshots: number;
 	lastRightPane: string;
 	lastBrowserUrl?: string | null;
 };
@@ -193,8 +194,12 @@ export function logClear() {
 	return invoke<void>("log_clear");
 }
 
-export function historyCreateSnapshot(message: string) {
-	return invoke<Snapshot>("history_create_snapshot", { message });
+export function historyCreateSnapshot(message: string, retentionLimit: number) {
+	return invoke<Snapshot>("history_create_snapshot", { message, retentionLimit });
+}
+
+export function historyPrune(keep: number) {
+	return invoke<number>("history_prune", { keep });
 }
 
 export function historyList(limit = 100) {
