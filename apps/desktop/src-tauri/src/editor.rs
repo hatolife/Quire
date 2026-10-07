@@ -513,6 +513,31 @@ pub fn goto_line(line: u64, state: &EditorState) -> Result<(), String> {
 	Ok(())
 }
 
+pub fn replace_content(content: String, state: &EditorState) -> Result<(), String> {
+	let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
+	let lines = normalized.split('\n').map(Value::from).collect::<Vec<_>>();
+	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
+	let process = slot.as_mut().ok_or_else(|| "Editor is not running.".to_string())?;
+	process.request(
+		"nvim_buf_set_lines",
+		vec![
+			Value::from(0),
+			Value::from(0),
+			Value::from(-1),
+			Value::from(true),
+			Value::Array(lines),
+		],
+	)?;
+	process.request(
+		"nvim_win_set_cursor",
+		vec![
+			Value::from(0),
+			Value::Array(vec![Value::from(1), Value::from(0)]),
+		],
+	)?;
+	Ok(())
+}
+
 pub fn insert_text(text: String, state: &EditorState) -> Result<(), String> {
 	if text.contains('\n') || text.contains('\r') {
 		return Err("editor_insert_text currently accepts one line.".to_string());

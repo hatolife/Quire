@@ -55,6 +55,12 @@ export type Snapshot = {
 	message: string;
 };
 
+export type RecoveryDraft = {
+	relativePath: string;
+	baseRevision: string;
+	content: string;
+};
+
 export type DesktopSettings = {
 	explorerWidth: number;
 	editorRatio: number;
@@ -126,6 +132,22 @@ export function editorSetTopLine(line: number) {
 
 export function editorInsertText(text: string) {
 	return invoke<void>("editor_insert_text", { text });
+}
+
+export function editorReplaceContent(content: string) {
+	return invoke<void>("editor_replace_content", { content });
+}
+
+export function recoveryLoad() {
+	return invoke<RecoveryDraft | null>("recovery_load");
+}
+
+export function recoverySave(relativePath: string, baseRevision: string, content: string) {
+	return invoke<void>("recovery_save", { relativePath, baseRevision, content });
+}
+
+export function recoveryClear() {
+	return invoke<void>("recovery_clear");
 }
 
 export function settingsLoad() {

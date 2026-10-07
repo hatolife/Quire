@@ -16,4 +16,5 @@ rmpv = "1"
 serde.workspace = true
 tauri = { version = "2", features = ["unstable"] }
 tauri-plugin-dialog = "2"
+tempfile = "3"
 toml = "0.8"

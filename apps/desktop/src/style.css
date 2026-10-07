@@ -836,3 +836,60 @@ button.primary {
 	color: #888;
 	font-size: 12px;
 }
+
+.recovery-backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: 120;
+	display: grid;
+	place-items: center;
+	padding: 20px;
+	background: rgba(0, 0, 0, 0.55);
+}
+
+.recovery-dialog {
+	width: min(620px, 100%);
+	display: grid;
+	gap: 10px;
+	padding: 18px;
+	background: #1c1c1c;
+	border: 1px solid #555;
+	border-radius: 7px;
+	box-shadow: 0 18px 54px rgba(0, 0, 0, 0.55);
+}
+
+.recovery-dialog h2,
+.recovery-dialog p {
+	margin: 0;
+}
+
+.recovery-dialog p {
+	color: #aaa;
+	font-size: 12px;
+}
+
+.recovery-warning {
+	padding: 8px 10px;
+	border: 1px solid #7d5b2f;
+	border-radius: 4px;
+	background: #3a2b18;
+	color: #ffd8a8;
+	font-size: 12px;
+}
+
+.recovery-preview {
+	max-height: 220px;
+	overflow: auto;
+	padding: 10px;
+	background: #111;
+	border: 1px solid #333;
+	white-space: pre-wrap;
+	word-break: break-word;
+	font: 12px/1.5 "Cascadia Mono", Consolas, monospace;
+}
+
+.recovery-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}

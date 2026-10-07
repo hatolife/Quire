@@ -1,5 +1,6 @@
 mod editor;
 mod logging;
+mod recovery;
 mod settings;
 mod watcher;
 
@@ -241,8 +242,56 @@ fn editor_insert_text(text: String, editor_state: tauri::State<'_, editor::Edito
 }
 
 #[tauri::command]
+fn editor_replace_content(content: String, editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
+	editor::replace_content(content, &editor_state)
+}
+
+#[tauri::command]
 fn editor_stop(editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
 	editor::stop(&editor_state)
+}
+
+#[tauri::command]
+fn recovery_load(
+	app: tauri::AppHandle,
+	state: tauri::State<'_, AppState>,
+) -> Result<Option<recovery::RecoveryDraft>, String> {
+	let path = recovery_path(&app, &state)?;
+	recovery::load(&path)
+}
+
+#[tauri::command]
+fn recovery_save(
+	relative_path: String,
+	base_revision: String,
+	content: String,
+	app: tauri::AppHandle,
+	state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+	let path = recovery_path(&app, &state)?;
+	recovery::save(&path, &recovery::RecoveryDraft {
+		relative_path,
+		base_revision,
+		content,
+	})
+}
+
+#[tauri::command]
+fn recovery_clear(
+	app: tauri::AppHandle,
+	state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+	let path = recovery_path(&app, &state)?;
+	recovery::clear(&path)
+}
+
+fn recovery_path(app: &tauri::AppHandle, state: &tauri::State<'_, AppState>) -> Result<std::path::PathBuf, String> {
+	let workspace_id = with_workspace(state, |workspace| Ok(workspace.local_id()))?;
+	let data = app
+		.path()
+		.app_local_data_dir()
+		.map_err(|error| format!("Failed to resolve Quire app data directory: {error}"))?;
+	Ok(recovery::path(data, &workspace_id))
 }
 
 #[tauri::command]
@@ -374,7 +423,11 @@ fn main() {
 			editor_set_top_line,
 			editor_goto_line,
 			editor_insert_text,
+			editor_replace_content,
 			editor_stop,
+			recovery_load,
+			recovery_save,
+			recovery_clear,
 			settings_load,
 			settings_save,
 			log_append,

@@ -16,6 +16,7 @@ import {
 	documentOpen,
 	documentResolveWikiLink,
 	editorInsertText,
+	editorReplaceContent,
 	editorSave,
 	editorSetTopLine,
 	historyCreateSnapshot,
@@ -25,6 +26,9 @@ import {
 	logAppend,
 	logClear,
 	logRecent,
+	recoveryClear,
+	recoveryLoad,
+	recoverySave,
 	settingsLoad,
 	settingsSave,
 	workspaceList,
@@ -36,6 +40,7 @@ import {
 	type DesktopSettings,
 	type Document,
 	type LogEntry,
+	type RecoveryDraft,
 	type SearchHit,
 	type Snapshot,
 	type WorkspaceEntry,
@@ -121,6 +126,7 @@ function App() {
 	let searchTimer: number | undefined;
 	let settingsTimer: number | undefined;
 	let autoSnapshotTimer: number | undefined;
+	let recoveryTimer: number | undefined;
 	let watchGeneration = 0;
 	const assetCache = new Map<string, Promise<string>>();
 
@@ -151,6 +157,7 @@ function App() {
 	const [autoSnapshotDelaySeconds, setAutoSnapshotDelaySeconds] = createSignal(5);
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
+	const [recoveryDraft, setRecoveryDraft] = createSignal<RecoveryDraft | null>(null);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
@@ -348,6 +355,28 @@ function App() {
 	});
 
 	createEffect(() => {
+		const current = document();
+		const currentDraft = draft();
+		const isDirty = dirty();
+		if(recoveryTimer !== undefined){ window.clearTimeout(recoveryTimer); }
+		if(!current || !workspace()){
+			return;
+		}
+		if(!isDirty){
+			recoveryTimer = window.setTimeout(() => {
+				recoveryTimer = undefined;
+				void recoveryClear().catch(error => updateStatus("Recovery clear error: " + String(error), "error", "recovery"));
+			}, 250);
+			return;
+		}
+		recoveryTimer = window.setTimeout(() => {
+			recoveryTimer = undefined;
+			void recoverySave(current.relativePath, current.revision, currentDraft)
+				.catch(error => updateStatus("Recovery save error: " + String(error), "error", "recovery"));
+		}, 500);
+	});
+
+	createEffect(() => {
 		const query = searchQuery().trim();
 		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
 		if(!query || !workspace()){
@@ -416,6 +445,14 @@ function App() {
 								setDraft(contentForEditor(restored.content));
 								setInitialEditorLine(undefined);
 								void refreshBacklinks(restored.relativePath);
+								try{
+									const recovery = await recoveryLoad();
+									if(recovery && recovery.relativePath === restored.relativePath && recovery.content !== contentForEditor(restored.content)){
+										setRecoveryDraft(recovery);
+									}
+								}catch(error){
+									updateStatus("Recovery load error: " + String(error), "error", "recovery");
+								}
 								updateStatus("Session restored: " + restored.relativePath, "info", "session");
 							}catch(error){
 								setDocument(null);
@@ -489,6 +526,7 @@ function App() {
 		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
 		if(settingsTimer !== undefined){ window.clearTimeout(settingsTimer); }
 		if(autoSnapshotTimer !== undefined){ window.clearTimeout(autoSnapshotTimer); }
+		if(recoveryTimer !== undefined){ window.clearTimeout(recoveryTimer); }
 		void workspaceWatchStop();
 	});
 
@@ -844,12 +882,43 @@ function App() {
 			setDocument(saved);
 			setDraft(contentForEditor(saved.content));
 			setExternalConflict(false);
+			setRecoveryDraft(null);
+			void recoveryClear().catch(error => updateStatus("Recovery clear error: " + String(error), "error", "recovery"));
 			updateStatus(saved.relativePath + " を保存しました", "info", "save");
 			scheduleAutoSnapshot(saved.relativePath);
 		}catch(error){
 			updateStatus("Save error: " + String(error), "error", "save");
 		}finally{
 			setSaving(false);
+		}
+	};
+
+	const applyRecoveryDraft = async () => {
+		const recovery = recoveryDraft();
+		const current = document();
+		if(!recovery || !current){ return; }
+		try{
+			await editorReplaceContent(recovery.content);
+			setRecoveryDraft(null);
+			updateStatus(
+				recovery.baseRevision === current.revision
+					? "前回の未保存bufferを復元しました。"
+					: "前回の未保存bufferを復元しました。disk側も変更されているため、保存前に内容を確認してください。",
+				recovery.baseRevision === current.revision ? "info" : "warn",
+				"recovery",
+			);
+		}catch(error){
+			updateStatus("Recovery apply error: " + String(error), "error", "recovery");
+		}
+	};
+
+	const discardRecoveryDraft = async () => {
+		try{
+			await recoveryClear();
+			setRecoveryDraft(null);
+			updateStatus("前回の未保存bufferを破棄しました。", "info", "recovery");
+		}catch(error){
+			updateStatus("Recovery clear error: " + String(error), "error", "recovery");
 		}
 	};
 
@@ -1107,13 +1176,32 @@ function App() {
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
 								<BrowserPane
-									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !settingsOpen() && !logOpen()}
+									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !settingsOpen() && !logOpen() && !recoveryDraft()}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
 								/>
 							</div>
 						</div>
 					</section>
 				</div>
+			</Show>
+
+			<Show when={recoveryDraft()}>
+				{recovery => (
+					<div class="recovery-backdrop">
+						<div class="recovery-dialog">
+							<h2>未保存bufferを検出しました</h2>
+							<p>{recovery().relativePath}</p>
+							<Show when={document() && recovery().baseRevision !== document()!.revision}>
+								<div class="recovery-warning">前回終了後にdisk側Documentが変更されています。復元しても自動保存はしません。</div>
+							</Show>
+							<div class="recovery-preview">{recovery().content.slice(0, 600)}{recovery().content.length > 600 ? "…" : ""}</div>
+							<div class="recovery-actions">
+								<button onClick={() => void discardRecoveryDraft()}>破棄</button>
+								<button class="primary" onClick={() => void applyRecoveryDraft()}>bufferを復元</button>
+							</div>
+						</div>
+					</div>
+				)}
 			</Show>
 
 			<Show when={settingsOpen()}>
