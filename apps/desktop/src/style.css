@@ -1376,3 +1376,34 @@ button.primary {
 .frontmatter a.property-tag {
 	text-decoration: none;
 }
+
+.file-drop-overlay {
+	position: absolute;
+	inset: 38px 0 24px;
+	z-index: 110;
+	display: grid;
+	place-items: center;
+	pointer-events: none;
+	background: rgba(16, 16, 16, 0.58);
+}
+
+.file-drop-overlay > div {
+	display: grid;
+	gap: 6px;
+	max-width: 520px;
+	padding: 20px 26px;
+	border: 1px dashed #777;
+	border-radius: 8px;
+	background: #1d1d1d;
+	box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+	text-align: center;
+}
+
+.file-drop-overlay strong {
+	font-size: 16px;
+}
+
+.file-drop-overlay span {
+	color: #aaa;
+	font-size: 12px;
+}

@@ -686,6 +686,7 @@ function App() {
 	let suppressEditorViewport = false;
 	let suppressPreviewScroll = false;
 	let closeUnlisten: (() => void) | undefined;
+	let dragDropUnlisten: (() => void) | undefined;
 	let commandKeyHandler: ((event: KeyboardEvent) => void) | undefined;
 	let reconcileTimer: number | undefined;
 	let searchTimer: number | undefined;
@@ -737,6 +738,7 @@ function App() {
 	const [quickOpenDocuments, setQuickOpenDocuments] = createSignal<string[]>([]);
 	const [recoveryDraft, setRecoveryDraft] = createSignal<RecoveryDraft | null>(null);
 	const [recoveryTrackingReady, setRecoveryTrackingReady] = createSignal(false);
+	const [draggingImageFiles, setDraggingImageFiles] = createSignal(false);
 	const preview = createMemo(() => renderPreview(draft(), document()?.relativePath));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
@@ -1334,6 +1336,31 @@ function App() {
 		};
 		window.addEventListener("keydown", commandKeyHandler);
 
+		void getCurrentWindow().onDragDropEvent(event => {
+			const payload = event.payload;
+			if(payload.type === "enter"){
+				setDraggingImageFiles(payload.paths.some(isImageFilePath));
+				return;
+			}
+			if(payload.type === "leave"){
+				setDraggingImageFiles(false);
+				return;
+			}
+			if(payload.type === "drop"){
+				setDraggingImageFiles(false);
+				const imagePaths = payload.paths.filter(isImageFilePath);
+				if(imagePaths.length > 0){
+					void importImageAssets(imagePaths);
+				}else if(payload.paths.length > 0){
+					updateStatus("画像以外のdropはまだ未対応です。", "warn", "asset");
+				}
+			}
+		}).then(unlisten => {
+			dragDropUnlisten = unlisten;
+		}).catch(error => {
+			updateStatus("Drag & drop handler error: " + String(error), "error", "asset");
+		});
+
 		void getCurrentWindow().onCloseRequested(event => {
 			if(!dirty()){ return; }
 			if(!window.confirm("未保存の変更があります。終了しますか？未保存bufferは次回起動時の復元候補として保持されます。")){
@@ -1348,6 +1375,7 @@ function App() {
 
 	onCleanup(() => {
 		closeUnlisten?.();
+		dragDropUnlisten?.();
 		if(commandKeyHandler){ window.removeEventListener("keydown", commandKeyHandler); }
 		++watchGeneration;
 		pendingWatchChanges = [];
@@ -1778,11 +1806,44 @@ function App() {
 		await openDocument(hit.relativePath, hit.line);
 	};
 
-	const addImageAsset = async () => {
+	const isImageFilePath = (path: string) => /\.(?:png|jpe?g|gif|webp|bmp|avif|svg|ico)$/i.test(path);
+
+	const importImageAssets = async (paths: string[]) => {
 		const current = document();
-		if(!current){ return; }
+		if(!current){
+			updateStatus("画像を追加するDocumentを開いてください。", "warn", "asset");
+			return;
+		}
+		const imagePaths = paths.filter(isImageFilePath);
+		if(imagePaths.length === 0){
+			updateStatus("対応画像がありません。", "warn", "asset");
+			return;
+		}
+
+		try{
+			const imported = [];
+			for(const path of imagePaths){
+				imported.push(await assetImport(current.relativePath, path));
+			}
+			const markdown = imported.map(asset => "![](" + asset.markdownSource + ")").join("\n");
+			await editorInsertText(markdown);
+			assetCache.clear();
+			await refreshExplorer();
+			updateStatus(
+				imported.length === 1
+					? "画像を追加しました: " + imported[0].relativePath
+					: "画像を" + imported.length + "件追加しました。",
+				"info",
+				"asset",
+			);
+		}catch(error){
+			updateStatus("Asset import error: " + String(error), "error", "asset");
+		}
+	};
+
+	const addImageAsset = async () => {
 		const selected = await open({
-			multiple: false,
+			multiple: true,
 			directory: false,
 			title: "Markdownへ追加する画像を選択",
 			filters: [{
@@ -1790,15 +1851,10 @@ function App() {
 				extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "svg", "ico"],
 			}],
 		});
-		if(typeof selected !== "string"){ return; }
-		try{
-			const imported = await assetImport(current.relativePath, selected);
-			await editorInsertText("![](" + imported.markdownSource + ")");
-			assetCache.clear();
-			await refreshExplorer();
-			updateStatus("画像を追加しました: " + imported.relativePath, "info", "asset");
-		}catch(error){
-			updateStatus("Asset import error: " + String(error), "error", "asset");
+		if(typeof selected === "string"){
+			await importImageAssets([selected]);
+		}else if(Array.isArray(selected)){
+			await importImageAssets(selected);
 		}
 	};
 
@@ -2303,7 +2359,7 @@ function App() {
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
 								<BrowserPane
-									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !settingsOpen() && !logOpen() && !recoveryDraft()}
+									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
 									navigateTo={browserTargetUrl()}
 									onUrlChange={url => setBrowserTargetUrl(url)}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
@@ -2311,6 +2367,15 @@ function App() {
 							</div>
 						</div>
 					</section>
+				</div>
+			</Show>
+
+			<Show when={draggingImageFiles() && document()}>
+				<div class="file-drop-overlay">
+					<div>
+						<strong>画像を追加</strong>
+						<span>Dropすると _assets/ へ取り込み、現在のカーソル位置へMarkdownを挿入します。</span>
+					</div>
 				</div>
 			</Show>
 
