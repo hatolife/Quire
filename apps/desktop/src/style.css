@@ -956,3 +956,36 @@ button.primary {
 	color: #777;
 	font-weight: 400;
 }
+
+.markdown-preview .wiki-embed-image {
+	max-width: 100%;
+	height: auto;
+}
+
+.markdown-preview .wiki-document-embed {
+	display: block;
+	margin: 1em 0;
+	padding: 12px 14px;
+	border: 1px solid #3b3b3b;
+	border-radius: 5px;
+	background: #171717;
+}
+
+.markdown-preview .wiki-document-embed .frontmatter {
+	margin-inline: 0;
+}
+
+.wiki-document-embed-loading,
+.wiki-document-embed-error {
+	color: #888;
+	font-size: 12px;
+}
+
+.wiki-document-embed-error {
+	color: #c99;
+}
+
+.wiki-embed-fallback::before {
+	content: "↳ ";
+	color: #777;
+}

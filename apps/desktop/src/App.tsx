@@ -57,6 +57,24 @@ const markdown = new MarkdownIt({
 	typographer: false,
 });
 
+markdown.inline.ruler.before("emphasis", "quire_wiki_embed", (state, silent) => {
+	if(state.src.slice(state.pos, state.pos + 3) !== "![["){ return false; }
+	const end = state.src.indexOf("]]", state.pos + 3);
+	if(end < 0){ return false; }
+	const body = state.src.slice(state.pos + 3, end).trim();
+	if(!body){ return false; }
+	const separator = body.indexOf("|");
+	const target = (separator >= 0 ? body.slice(0, separator) : body).trim();
+	const label = (separator >= 0 ? body.slice(separator + 1) : target).trim() || target;
+	if(!target){ return false; }
+	if(!silent){
+		const token = state.push("quire_wiki_embed", "", 0);
+		token.meta = { target, label };
+	}
+	state.pos = end + 2;
+	return true;
+});
+
 markdown.inline.ruler.before("emphasis", "quire_wiki_link", (state, silent) => {
 	if(state.src.slice(state.pos, state.pos + 2) !== "[["){ return false; }
 	const end = state.src.indexOf("]]", state.pos + 2);
@@ -81,26 +99,66 @@ markdown.inline.ruler.before("emphasis", "quire_wiki_link", (state, silent) => {
 
 const PREVIEW_IMAGE_PLACEHOLDER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
+function isPreviewImageTarget(target: string): boolean {
+	const path = target.split("#", 1)[0].split("?", 1)[0];
+	return /\.(?:png|jpe?g|gif|webp|bmp|avif|svg|ico)$/i.test(path);
+}
+
+markdown.renderer.rules.quire_wiki_embed = (tokens, index) => {
+	const token = tokens[index];
+	const target = String(token.meta?.target ?? "");
+	const label = String(token.meta?.label ?? target);
+	const sourceDocument = token.attrGet("data-quire-source-document") ?? "";
+	const disabled = token.attrGet("data-quire-document-embed-disabled") === "true";
+	const sourceAttr = sourceDocument ? ' data-quire-source-document="' + escapePreviewHtml(sourceDocument) + '"' : "";
+	if(isPreviewImageTarget(target)){
+		return '<img class="wiki-embed-image" src="' + PREVIEW_IMAGE_PLACEHOLDER
+			+ '" data-quire-asset="' + escapePreviewHtml(target)
+			+ '"' + sourceAttr
+			+ ' alt="' + escapePreviewHtml(label) + '">';
+	}
+	if(disabled){
+		return '<a class="wiki-link wiki-embed-fallback" href="quire-wiki:' + encodeURIComponent(target)
+			+ '"' + sourceAttr + '>' + escapePreviewHtml(label) + '</a>';
+	}
+	return '<section class="wiki-document-embed" data-quire-wiki-embed-target="' + escapePreviewHtml(target)
+		+ '"' + sourceAttr + '><div class="wiki-document-embed-loading">埋め込みを読み込み中: '
+		+ escapePreviewHtml(label) + '</div></section>';
+};
+
 function isLocalAssetSource(source: string): boolean {
 	if(!source || source.startsWith("/") || source.startsWith("\\")){ return false; }
 	if(source.startsWith("#") || source.startsWith("//")){ return false; }
 	return !/^[a-z][a-z0-9+.-]*:/i.test(source);
 }
 
-function decoratePreviewTokens(tokens: any[], lineOffset = 0) {
+function decoratePreviewTokens(
+	tokens: any[],
+	lineOffset = 0,
+	sourceDocument?: string,
+	allowDocumentEmbeds = true,
+) {
 	for(const token of tokens){
 		if(token.map && token.nesting === 1){
 			token.attrSet("data-source-line", String(token.map[0] + lineOffset));
+		}
+		if(sourceDocument && token.type === "link_open"){
+			token.attrSet("data-quire-source-document", sourceDocument);
 		}
 		if(token.type === "image"){
 			const source = token.attrGet("src");
 			if(source && isLocalAssetSource(source)){
 				token.attrSet("data-quire-asset", source);
+				if(sourceDocument){ token.attrSet("data-quire-source-document", sourceDocument); }
 				token.attrSet("src", PREVIEW_IMAGE_PLACEHOLDER);
 			}
 		}
+		if(token.type === "quire_wiki_embed"){
+			if(sourceDocument){ token.attrSet("data-quire-source-document", sourceDocument); }
+			if(!allowDocumentEmbeds){ token.attrSet("data-quire-document-embed-disabled", "true"); }
+		}
 		if(token.children){
-			decoratePreviewTokens(token.children, lineOffset);
+			decoratePreviewTokens(token.children, lineOffset, sourceDocument, allowDocumentEmbeds);
 		}
 	}
 }
@@ -182,11 +240,11 @@ function decorateCalloutTokens(tokens: any[]) {
 	}
 }
 
-function renderPreview(source: string): string {
+function renderPreview(source: string, sourceDocument?: string, allowDocumentEmbeds = true): string {
 	const parsed = splitFrontMatter(source);
 	const environment = {};
 	const tokens = markdown.parse(parsed.body, environment);
-	decoratePreviewTokens(tokens, parsed.lineOffset);
+	decoratePreviewTokens(tokens, parsed.lineOffset, sourceDocument, allowDocumentEmbeds);
 	decorateCalloutTokens(tokens);
 	return renderFrontMatter(parsed.frontMatter) + markdown.renderer.render(tokens, markdown.options, environment);
 }
@@ -281,6 +339,7 @@ function App() {
 	let recoveryTimer: number | undefined;
 	let watchGeneration = 0;
 	let searchReindexPending = false;
+	let previewResolveGeneration = 0;
 	const assetCache = new Map<string, Promise<string>>();
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
@@ -315,7 +374,7 @@ function App() {
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
 	const [recoveryDraft, setRecoveryDraft] = createSignal<RecoveryDraft | null>(null);
 	const [recoveryTrackingReady, setRecoveryTrackingReady] = createSignal(false);
-	const preview = createMemo(() => renderPreview(draft()));
+	const preview = createMemo(() => renderPreview(draft(), document()?.relativePath));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
 	const decodeAssetSource = (source: string) => {
@@ -341,19 +400,51 @@ function App() {
 		return pending;
 	};
 
-	const resolvePreviewAssets = async (documentRelativePath: string) => {
+	const resolvePreviewAssets = async (documentRelativePath: string, generation = previewResolveGeneration) => {
 		if(!previewElement){ return; }
 		const images = Array.from(previewElement.querySelectorAll<HTMLImageElement>("img[data-quire-asset]"));
 		await Promise.all(images.map(async image => {
 			const source = image.dataset.quireAsset;
 			if(!source){ return; }
+			const sourceDocument = image.dataset.quireSourceDocument || documentRelativePath;
 			try{
-				image.src = await loadPreviewAsset(documentRelativePath, source);
+				const resolved = await loadPreviewAsset(sourceDocument, source);
+				if(generation !== previewResolveGeneration){ return; }
+				image.src = resolved;
 				image.removeAttribute("data-quire-asset");
 			}catch(error){
+				if(generation !== previewResolveGeneration){ return; }
 				image.alt = (image.alt ? image.alt + " — " : "") + "画像を読み込めません";
 				image.classList.add("preview-asset-error");
 				void appendLog("warn", "preview", "Asset load error: " + source + " / " + String(error));
+			}
+		}));
+	};
+
+	const resolvePreviewEmbeds = async (documentRelativePath: string, generation: number) => {
+		if(!previewElement){ return; }
+		const embeds = Array.from(previewElement.querySelectorAll<HTMLElement>("[data-quire-wiki-embed-target]"));
+		await Promise.all(embeds.map(async element => {
+			const rawTarget = element.dataset.quireWikiEmbedTarget;
+			if(!rawTarget){ return; }
+			const sourceDocument = element.dataset.quireSourceDocument || documentRelativePath;
+			try{
+				const resolved = await documentResolveWikiLink(sourceDocument, rawTarget);
+				if(generation !== previewResolveGeneration){ return; }
+				if(!resolved){
+					element.innerHTML = '<div class="wiki-document-embed-error">未解決embed: '
+						+ escapePreviewHtml(rawTarget) + "</div>";
+					return;
+				}
+				const embedded = await documentOpen(resolved);
+				if(generation !== previewResolveGeneration){ return; }
+				element.dataset.quireEmbeddedDocument = resolved;
+				element.removeAttribute("data-quire-wiki-embed-target");
+				element.innerHTML = renderPreview(contentForEditor(embedded.content), resolved, false);
+			}catch(error){
+				if(generation !== previewResolveGeneration){ return; }
+				element.innerHTML = '<div class="wiki-document-embed-error">embed読込失敗: '
+					+ escapePreviewHtml(String(error)) + "</div>";
 			}
 		}));
 	};
@@ -535,8 +626,14 @@ function App() {
 	createEffect(() => {
 		preview();
 		const relativePath = document()?.relativePath;
+		const generation = ++previewResolveGeneration;
 		if(!relativePath){ return; }
-		requestAnimationFrame(() => { void resolvePreviewAssets(relativePath); });
+		requestAnimationFrame(() => {
+			void (async () => {
+				await resolvePreviewEmbeds(relativePath, generation);
+				await resolvePreviewAssets(relativePath, generation);
+			})();
+		});
 	});
 
 	createEffect(() => {
@@ -1132,13 +1229,14 @@ function App() {
 		if(!href){ return; }
 		const current = document();
 		if(!current){ return; }
+		const sourceDocument = anchor.dataset.quireSourceDocument || current.relativePath;
 
 		if(href.startsWith("quire-wiki:")){
 			event.preventDefault();
 			const target = decodeURIComponent(href.slice("quire-wiki:".length));
 			const heading = linkFragment(target);
 			try{
-				const resolved = await documentResolveWikiLink(current.relativePath, target);
+				const resolved = await documentResolveWikiLink(sourceDocument, target);
 				if(!resolved){
 					updateStatus("未解決Wiki Link: [[" + target + "]]", "warn", "links");
 					return;
@@ -1160,7 +1258,7 @@ function App() {
 
 		if(href.startsWith("#")){
 			event.preventDefault();
-			await openDocument(current.relativePath, undefined, href.slice(1));
+			await openDocument(sourceDocument, undefined, href.slice(1));
 			return;
 		}
 
@@ -1173,7 +1271,7 @@ function App() {
 		event.preventDefault();
 		const heading = linkFragment(href);
 		try{
-			const resolved = await documentResolveMarkdownLink(current.relativePath, href);
+			const resolved = await documentResolveMarkdownLink(sourceDocument, href);
 			if(!resolved){
 				updateStatus("Workspace内Markdownとして解決できません: " + href, "warn", "links");
 				return;
