@@ -71,6 +71,7 @@ export type DesktopSettings = {
 	editorRatio: number;
 	lastWorkspace?: string | null;
 	lastDocument?: string | null;
+	openDocuments: string[];
 	autoSnapshotEnabled: boolean;
 	autoSnapshotDelaySeconds: number;
 	historyRetentionSnapshots: number;

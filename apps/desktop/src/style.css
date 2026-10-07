@@ -1281,3 +1281,80 @@ button.primary {
 .markdown-preview blockquote.callout.callout-collapsed > :not(.callout-title) {
 	display: none;
 }
+
+.document-tabs {
+	display: flex;
+	height: 31px;
+	min-width: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	background: #171717;
+	border-bottom: 1px solid #333;
+	scrollbar-width: thin;
+}
+
+.document-tab {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: stretch;
+	max-width: 220px;
+	border-right: 1px solid #303030;
+	background: #1b1b1b;
+}
+
+.document-tab.active {
+	background: #242424;
+	box-shadow: inset 0 -2px #777;
+}
+
+.document-tab-open {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 5px 3px 9px;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	color: #999;
+	font-size: 11px;
+}
+
+.document-tab.active .document-tab-open {
+	color: #ddd;
+}
+
+.document-tab-open > span:first-child {
+	min-width: 0;
+	max-width: 150px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.document-tab-close {
+	width: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	color: #777;
+	font-size: 15px;
+}
+
+.document-tab-close:hover:not(:disabled) {
+	background: #333;
+	color: #ddd;
+}
+
+.editor-pane {
+	display: flex;
+	flex-direction: column;
+}
+
+.editor-pane > .neovim-editor,
+.editor-pane > .empty-pane {
+	flex: 1 1 auto;
+	min-height: 0;
+	height: auto;
+}

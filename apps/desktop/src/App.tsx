@@ -659,6 +659,7 @@ function App() {
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
 	const [entries, setEntries] = createSignal<WorkspaceEntry[]>([]);
 	const [document, setDocument] = createSignal<Document | null>(null);
+	const [openDocuments, setOpenDocuments] = createSignal<string[]>([]);
 	const [draft, setDraft] = createSignal("");
 	const [status, setStatus] = createSignal("Workspaceを開いてください");
 	const [saving, setSaving] = createSignal(false);
@@ -1084,6 +1085,7 @@ function App() {
 		editorRatio();
 		workspace()?.root;
 		document()?.relativePath;
+		openDocuments();
 		autoSnapshotEnabled();
 		autoSnapshotDelaySeconds();
 		historyRetentionSnapshots();
@@ -1146,6 +1148,7 @@ function App() {
 		editorRatio: editorRatio(),
 		lastWorkspace: workspace()?.root ?? null,
 		lastDocument: document()?.relativePath ?? null,
+		openDocuments: openDocuments(),
 		autoSnapshotEnabled: autoSnapshotEnabled(),
 		autoSnapshotDelaySeconds: autoSnapshotDelaySeconds(),
 		historyRetentionSnapshots: historyRetentionSnapshots(),
@@ -1188,6 +1191,7 @@ function App() {
 						const opened = await workspaceOpen(settings.lastWorkspace);
 						setWorkspace(opened.info);
 						setEntries(opened.entries);
+						setOpenDocuments([...(settings.openDocuments ?? [])]);
 						setSearchIndexReady(false);
 						void rebuildSearchIndex("session restore");
 						assetCache.clear();
@@ -1197,6 +1201,7 @@ function App() {
 							try{
 								const restored = await documentOpen(settings.lastDocument);
 								setDocument(restored);
+								addOpenDocument(restored.relativePath);
 								setDraft(contentForEditor(restored.content));
 								setInitialEditorLine(undefined);
 								void refreshBacklinks(restored.relativePath);
@@ -1410,6 +1415,7 @@ function App() {
 			const opened = await workspaceOpen(selected);
 			setWorkspace(opened.info);
 			setEntries(opened.entries);
+			setOpenDocuments([]);
 			setSearchIndexReady(false);
 			void rebuildSearchIndex("workspace open");
 			assetCache.clear();
@@ -1549,6 +1555,26 @@ function App() {
 		return /\.md(?:own)?$/i.test(trimmed) ? trimmed : trimmed + ".md";
 	};
 
+	const addOpenDocument = (relativePath: string) => {
+		setOpenDocuments(paths => paths.includes(relativePath) ? paths : [...paths, relativePath]);
+	};
+
+	const replaceOpenDocument = (from: string, to: string) => {
+		setOpenDocuments(paths => {
+			const next = paths.map(path => path === from ? to : path);
+			return [...new Set(next)];
+		});
+	};
+
+	const removeOpenDocument = (relativePath: string) => {
+		setOpenDocuments(paths => paths.filter(path => path !== relativePath));
+	};
+
+	const documentTabLabel = (relativePath: string) => {
+		const normalized = relativePath.replace(/\\/g, "/");
+		return normalized.split("/").pop() || normalized;
+	};
+
 	const createDocument = async () => {
 		if(!workspace()){ return; }
 		const input = window.prompt("Workspaceからの相対pathを入力してください。", "新規.md");
@@ -1559,6 +1585,7 @@ function App() {
 			const created = await documentCreate(relativePath);
 			await refreshExplorer();
 			setDocument(created);
+			addOpenDocument(created.relativePath);
 			setDraft(contentForEditor(created.content));
 			setExternalConflict(false);
 			setBacklinks([]);
@@ -1585,6 +1612,7 @@ function App() {
 			assetCache.clear();
 			await refreshExplorer();
 			setDocument(moved.document);
+			replaceOpenDocument(current.relativePath, moved.document.relativePath);
 			setDraft(contentForEditor(moved.document.content));
 			setExternalConflict(false);
 			void refreshBacklinks(moved.document.relativePath);
@@ -1607,6 +1635,7 @@ function App() {
 		try{
 			if(!await createSafetySnapshot("Before delete " + current.relativePath)){ return; }
 			await documentDelete(current.relativePath, current.revision);
+			removeOpenDocument(current.relativePath);
 			setDocument(null);
 			setDraft("");
 			setExternalConflict(false);
@@ -1642,6 +1671,7 @@ function App() {
 			const content = contentForEditor(opened.content);
 			const targetLine = line ?? (heading ? findFragmentLine(content, heading) : undefined);
 			setDocument(opened);
+			addOpenDocument(opened.relativePath);
 			setDraft(content);
 			setExternalConflict(false);
 			setInitialEditorLine(targetLine);
@@ -1657,6 +1687,33 @@ function App() {
 		}catch(error){
 			updateStatus("Document open error: " + String(error), "error", "document");
 		}
+	};
+
+	const closeDocumentTab = async (relativePath: string) => {
+		const paths = openDocuments();
+		const index = paths.indexOf(relativePath);
+		if(index < 0){ return; }
+
+		const current = document();
+		const closingCurrent = current?.relativePath === relativePath;
+		if(closingCurrent && dirty() && !window.confirm("未保存の変更があります。このタブを閉じて変更を破棄しますか？")){
+			return;
+		}
+
+		const remaining = paths.filter(path => path !== relativePath);
+		setOpenDocuments(remaining);
+		if(!closingCurrent){ return; }
+
+		if(remaining.length === 0){
+			setDocument(null);
+			setDraft("");
+			setBacklinks([]);
+			setExternalConflict(false);
+			return;
+		}
+
+		const nextIndex = Math.min(index, remaining.length - 1);
+		await openDocument(remaining[nextIndex]);
 	};
 
 	const openSearchHit = async (hit: SearchHit) => {
@@ -2044,7 +2101,7 @@ function App() {
 						aria-orientation="vertical"
 						onPointerDown={event => beginExplorerResize(event as PointerEvent)}
 					/>
-					<section class="editor-pane">
+					<section class="editor-pane" classList={{ "has-document-tabs": openDocuments().length > 0 }}>
 						<div class="pane-title">
 							<span class="pane-document-path">{document()?.relativePath ?? "Editor"}</span>
 							<Show when={dirty()}><span class="dirty-mark">●</span></Show>
@@ -2056,6 +2113,30 @@ function App() {
 								<button class="pane-action danger" title="削除" disabled={dirty()} onClick={() => void deleteCurrentDocument()}>削除</button>
 							</Show>
 						</div>
+						<Show when={openDocuments().length > 0}>
+							<div class="document-tabs">
+								<For each={openDocuments()}>
+									{path => (
+										<div class="document-tab" classList={{ active: document()?.relativePath === path }}>
+											<button class="document-tab-open" title={path} onClick={() => void openDocument(path)}>
+												<span>{documentTabLabel(path)}</span>
+												<Show when={document()?.relativePath === path && dirty()}><span class="dirty-mark">●</span></Show>
+											</button>
+											<button
+												class="document-tab-close"
+												title="タブを閉じる"
+												onClick={event => {
+													event.stopPropagation();
+													void closeDocumentTab(path);
+												}}
+											>
+												×
+											</button>
+										</div>
+									)}
+								</For>
+							</div>
+						</Show>
 						<For
 							each={document() ? [{ relativePath: document()!.relativePath, session: editorSession() }] : []}
 							fallback={<div class="empty-pane">左からMarkdownを選択してください。</div>}
