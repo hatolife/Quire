@@ -341,6 +341,60 @@ function cleanHeadingText(value: string): string {
 		.trim();
 }
 
+function findBlockReferenceLine(source: string, fragment: string): number | undefined {
+	const wanted = decodeHeadingFragment(fragment).trim();
+	if(!wanted.startsWith("^") || wanted.length <= 1){ return undefined; }
+	const blockId = wanted.slice(1);
+	const escaped = blockId.replace(/[.*+?^{}()|[\]\\]/g, "\\function findHeadingLine(source: string, fragment: string): number | undefined {
+	const wanted = decodeHeadingFragment(fragment).trim();
+	if(!wanted || wanted.startsWith("^")){ return undefined; }
+	const wantedLower = wanted.toLocaleLowerCase();
+	const wantedSlug = headingSlug(wanted);
+	const lines = source.split("\n");
+	let inFence = false;
+	const backtickFence = String.fromCharCode(96, 96, 96);
+
+	const matches = (text: string) => {
+		const cleaned = cleanHeadingText(text);
+		return cleaned.toLocaleLowerCase() === wantedLower || headingSlug(cleaned) === wantedSlug;
+	};
+
+	for(let index = 0; index < lines.length; ++index){
+		const line = lines[index];
+		const trimmed = line.trimStart();
+		if(trimmed.startsWith(backtickFence) || trimmed.startsWith("~~~")){
+			inFence = !inFence;
+			continue;
+		}
+		if(inFence){ continue; }
+
+		const atx = line.match(/^[ \t]{0,3}#{1,6}[ \t]+(.+?)\s*$/);
+		if(atx && matches(atx[1])){ return index + 1; }
+
+		if(index + 1 < lines.length && line.trim()){
+			const underline = lines[index + 1];
+			if(/^[ \t]{0,3}(?:=+|-+)[ \t]*$/.test(underline) && matches(line)){
+				return index + 1;
+			}
+		}
+	}
+	return undefined;
+}");
+	const pattern = new RegExp("(?:^|\\s)\\^" + escaped + "\\s*$");
+	const lines = source.split("\n");
+	let inFence = false;
+	const backtickFence = String.fromCharCode(96, 96, 96);
+	for(let index = 0; index < lines.length; ++index){
+		const trimmed = lines[index].trimStart();
+		if(trimmed.startsWith(backtickFence) || trimmed.startsWith("~~~")){
+			inFence = !inFence;
+			continue;
+		}
+		if(!inFence && pattern.test(lines[index])){ return index + 1; }
+	}
+	return undefined;
+}
+
 function findHeadingLine(source: string, fragment: string): number | undefined {
 	const wanted = decodeHeadingFragment(fragment).trim();
 	if(!wanted || wanted.startsWith("^")){ return undefined; }
@@ -375,6 +429,13 @@ function findHeadingLine(source: string, fragment: string): number | undefined {
 		}
 	}
 	return undefined;
+}
+
+function findFragmentLine(source: string, fragment: string): number | undefined {
+	const decoded = decodeHeadingFragment(fragment).trim();
+	return decoded.startsWith("^")
+		? findBlockReferenceLine(source, decoded)
+		: findHeadingLine(source, decoded);
 }
 
 function linkFragment(value: string): string | undefined {
@@ -1338,7 +1399,7 @@ function App() {
 	const openDocument = async (relativePath: string, line?: number, heading?: string) => {
 		const current = document();
 		if(current?.relativePath === relativePath && heading){
-			const headingLine = findHeadingLine(draft(), heading);
+			const headingLine = findFragmentLine(draft(), heading);
 			if(headingLine !== undefined){
 				try{
 					await editorGotoLine(headingLine);
@@ -1355,7 +1416,7 @@ function App() {
 		try{
 			const opened = await documentOpen(relativePath);
 			const content = contentForEditor(opened.content);
-			const targetLine = line ?? (heading ? findHeadingLine(content, heading) : undefined);
+			const targetLine = line ?? (heading ? findFragmentLine(content, heading) : undefined);
 			setDocument(opened);
 			setDraft(content);
 			setExternalConflict(false);
