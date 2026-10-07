@@ -98,6 +98,10 @@ export function workspaceSearch(query: string, limit = 100) {
 	return invoke<SearchHit[]>("workspace_search", { query, limit });
 }
 
+export function workspaceReindex() {
+	return invoke<number>("workspace_reindex");
+}
+
 export function documentBacklinks(relativePath: string) {
 	return invoke<Backlink[]>("document_backlinks", { relativePath });
 }

@@ -5,7 +5,7 @@ mod settings;
 mod watcher;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use quire_core::{AssetImport, Backlink, Document, DocumentMove, HistoryStore, SearchHit, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
+use quire_core::{AssetImport, Backlink, Document, DocumentMove, HistoryStore, SearchHit, SearchIndex, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
 use serde::Serialize;
 use std::path::Path;
 use tauri::ipc::Channel;
@@ -14,6 +14,7 @@ use std::sync::Mutex;
 
 struct AppState {
 	workspace: Mutex<Option<Workspace>>,
+	search_index: Mutex<Option<SearchIndex>>,
 }
 
 #[derive(Serialize)]
@@ -28,8 +29,13 @@ fn workspace_open(path: String, state: tauri::State<'_, AppState>) -> Result<Wor
 	let workspace = Workspace::open(path).map_err(|error| error.to_string())?;
 	let info = workspace.info();
 	let entries = workspace.list_directory("").map_err(|error| error.to_string())?;
-	let mut current = state.workspace.lock().map_err(|_| "Workspace state lock failed.".to_string())?;
-	*current = Some(workspace);
+	let search_index = workspace.build_search_index().map_err(|error| error.to_string())?;
+	{
+		let mut current = state.workspace.lock().map_err(|_| "Workspace state lock failed.".to_string())?;
+		*current = Some(workspace);
+	}
+	let mut index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+	*index = Some(search_index);
 	Ok(WorkspaceOpened { info, entries })
 }
 
@@ -55,7 +61,18 @@ fn workspace_watch_stop(watcher_state: tauri::State<'_, watcher::WatcherState>) 
 
 #[tauri::command]
 fn workspace_search(query: String, limit: usize, state: tauri::State<'_, AppState>) -> Result<Vec<SearchHit>, String> {
-	with_workspace(&state, |workspace| workspace.search(&query, limit).map_err(|error| error.to_string()))
+	let index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+	let index = index.as_ref().ok_or_else(|| "Workspace search index is not ready.".to_string())?;
+	Ok(index.search(&query, limit))
+}
+
+#[tauri::command]
+fn workspace_reindex(state: tauri::State<'_, AppState>) -> Result<usize, String> {
+	let rebuilt = with_workspace(&state, |workspace| workspace.build_search_index().map_err(|error| error.to_string()))?;
+	let count = rebuilt.document_count();
+	let mut index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+	*index = Some(rebuilt);
+	Ok(count)
 }
 
 #[tauri::command]
@@ -395,6 +412,7 @@ fn main() {
 		.plugin(tauri_plugin_dialog::init())
 		.manage(AppState {
 			workspace: Mutex::new(None),
+			search_index: Mutex::new(None),
 		})
 		.manage(editor::EditorState::default())
 		.manage(logging::LogState::default())
@@ -405,6 +423,7 @@ fn main() {
 			workspace_watch,
 			workspace_watch_stop,
 			workspace_search,
+			workspace_reindex,
 			document_backlinks,
 			document_resolve_wiki_link,
 			document_open,

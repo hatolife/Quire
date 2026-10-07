@@ -33,6 +33,7 @@ import {
 	settingsSave,
 	workspaceList,
 	workspaceOpen,
+	workspaceReindex,
 	workspaceSearch,
 	workspaceWatch,
 	workspaceWatchStop,
@@ -657,6 +658,12 @@ function App() {
 
 	const reconcileExternalChanges = async () => {
 		await refreshExplorer();
+		try{
+			const count = await workspaceReindex();
+			void appendLog("info", "index", "Search index rebuilt: " + count + " documents");
+		}catch(error){
+			updateStatus("Search index rebuild error: " + String(error), "error", "index");
+		}
 		const current = document();
 		if(!current){ return; }
 		try{

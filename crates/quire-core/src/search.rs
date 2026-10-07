@@ -19,36 +19,36 @@ pub struct SearchHit {
 	pub preview: String,
 }
 
-impl Workspace {
-	pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, WorkspaceError> {
-		let query = query.trim();
-		if query.is_empty() || limit == 0 {
-			return Ok(Vec::new());
-		}
+#[derive(Debug, Clone)]
+struct IndexedLine {
+	original: String,
+	lowercase: String,
+}
 
-		let query_lower = query.to_lowercase();
+#[derive(Debug, Clone)]
+struct IndexedDocument {
+	relative_path: String,
+	lowercase_path: String,
+	lines: Vec<IndexedLine>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SearchIndex {
+	documents: Vec<IndexedDocument>,
+}
+
+impl SearchIndex {
+	pub fn build(workspace: &Workspace) -> Result<Self, WorkspaceError> {
 		let mut files = Vec::new();
-		collect_markdown_files(&self.root, &self.root, &mut files)?;
+		collect_markdown_files(&workspace.root, &workspace.root, &mut files)?;
 		files.sort();
 
-		let mut hits = Vec::new();
+		let mut documents = Vec::with_capacity(files.len());
 		for path in files {
 			let relative = path
-				.strip_prefix(&self.root)
+				.strip_prefix(&workspace.root)
 				.map_err(|_| WorkspaceError::InvalidRelativePath(path.display().to_string()))?;
 			let relative_path = portable_path(relative);
-			if relative_path.to_lowercase().contains(&query_lower) {
-				hits.push(SearchHit {
-					kind: SearchKind::Filename,
-					relative_path: relative_path.clone(),
-					line: None,
-					preview: relative_path.clone(),
-				});
-				if hits.len() >= limit {
-					break;
-				}
-			}
-
 			let bytes = match fs::read(&path) {
 				Ok(bytes) => bytes,
 				Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
@@ -58,15 +58,56 @@ impl Workspace {
 				Ok(content) => content,
 				Err(_) => continue,
 			};
-			for (index, line) in content.lines().enumerate() {
-				if !line.to_lowercase().contains(&query_lower) {
+			let lines = content
+				.lines()
+				.map(|line| IndexedLine {
+					original: line.to_string(),
+					lowercase: line.to_lowercase(),
+				})
+				.collect();
+			documents.push(IndexedDocument {
+				lowercase_path: relative_path.to_lowercase(),
+				relative_path,
+				lines,
+			});
+		}
+		Ok(Self { documents })
+	}
+
+	pub fn document_count(&self) -> usize {
+		self.documents.len()
+	}
+
+	pub fn search(&self, query: &str, limit: usize) -> Vec<SearchHit> {
+		let query = query.trim();
+		if query.is_empty() || limit == 0 {
+			return Vec::new();
+		}
+		let query_lower = query.to_lowercase();
+		let mut hits = Vec::new();
+
+		for document in &self.documents {
+			if document.lowercase_path.contains(&query_lower) {
+				hits.push(SearchHit {
+					kind: SearchKind::Filename,
+					relative_path: document.relative_path.clone(),
+					line: None,
+					preview: document.relative_path.clone(),
+				});
+				if hits.len() >= limit {
+					break;
+				}
+			}
+
+			for (index, line) in document.lines.iter().enumerate() {
+				if !line.lowercase.contains(&query_lower) {
 					continue;
 				}
 				hits.push(SearchHit {
 					kind: SearchKind::Content,
-					relative_path: relative_path.clone(),
+					relative_path: document.relative_path.clone(),
 					line: Some(index + 1),
-					preview: compact_preview(line, 180),
+					preview: compact_preview(&line.original, 180),
 				});
 				if hits.len() >= limit {
 					break;
@@ -76,7 +117,17 @@ impl Workspace {
 				break;
 			}
 		}
-		Ok(hits)
+		hits
+	}
+}
+
+impl Workspace {
+	pub fn build_search_index(&self) -> Result<SearchIndex, WorkspaceError> {
+		SearchIndex::build(self)
+	}
+
+	pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, WorkspaceError> {
+		Ok(self.build_search_index()?.search(query, limit))
 	}
 }
 
@@ -133,17 +184,19 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn search_finds_filename_and_content_recursively() {
+	fn search_index_finds_filename_and_content_recursively() {
 		let temp = tempfile::tempdir().unwrap();
 		fs::create_dir_all(temp.path().join("notes")).unwrap();
 		fs::write(temp.path().join("notes").join("Alpha.md"), "# Heading\nneedle here\n").unwrap();
 		fs::write(temp.path().join("other.md"), "No match\n").unwrap();
 		let workspace = Workspace::open(temp.path()).unwrap();
+		let index = workspace.build_search_index().unwrap();
 
-		let filename_hits = workspace.search("alpha", 20).unwrap();
+		assert_eq!(index.document_count(), 2);
+		let filename_hits = index.search("alpha", 20);
 		assert!(filename_hits.iter().any(|hit| hit.kind == SearchKind::Filename && hit.relative_path == "notes/Alpha.md"));
 
-		let content_hits = workspace.search("NEEDLE", 20).unwrap();
+		let content_hits = index.search("NEEDLE", 20);
 		assert!(content_hits.iter().any(|hit| {
 			hit.kind == SearchKind::Content
 				&& hit.relative_path == "notes/Alpha.md"
@@ -152,22 +205,36 @@ mod tests {
 	}
 
 	#[test]
-	fn search_ignores_git_and_non_markdown_files() {
+	fn search_index_is_stable_until_rebuilt() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("a.md"), "before\n").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let first = workspace.build_search_index().unwrap();
+
+		fs::write(temp.path().join("a.md"), "after\n").unwrap();
+
+		assert!(first.search("after", 20).is_empty());
+		let rebuilt = workspace.build_search_index().unwrap();
+		assert_eq!(rebuilt.search("after", 20).len(), 1);
+	}
+
+	#[test]
+	fn search_index_ignores_git_and_non_markdown_files() {
 		let temp = tempfile::tempdir().unwrap();
 		fs::create_dir(temp.path().join(".git")).unwrap();
 		fs::write(temp.path().join(".git").join("hidden.md"), "secret needle").unwrap();
 		fs::write(temp.path().join("plain.txt"), "needle").unwrap();
 		let workspace = Workspace::open(temp.path()).unwrap();
 
-		assert!(workspace.search("needle", 20).unwrap().is_empty());
+		assert!(workspace.build_search_index().unwrap().search("needle", 20).is_empty());
 	}
 
 	#[test]
-	fn search_respects_limit() {
+	fn search_index_respects_limit() {
 		let temp = tempfile::tempdir().unwrap();
 		fs::write(temp.path().join("a.md"), "needle\nneedle\nneedle\n").unwrap();
 		let workspace = Workspace::open(temp.path()).unwrap();
 
-		assert_eq!(workspace.search("needle", 2).unwrap().len(), 2);
+		assert_eq!(workspace.build_search_index().unwrap().search("needle", 2).len(), 2);
 	}
 }
