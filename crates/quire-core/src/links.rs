@@ -106,6 +106,57 @@ impl LinkIndex {
 		})
 	}
 
+	pub fn refresh_document(&mut self, workspace: &Workspace, relative_path: &str) -> Result<(), WorkspaceError> {
+		for backlinks in self.backlinks.values_mut() {
+			backlinks.retain(|backlink| backlink.source_path != relative_path);
+		}
+		self.backlinks.retain(|_, backlinks| !backlinks.is_empty());
+
+		let document = workspace.read_document(relative_path)?;
+		let stem = Path::new(relative_path)
+			.file_stem()
+			.and_then(|value| value.to_str())
+			.unwrap_or("")
+			.to_lowercase();
+		if !stem.is_empty() {
+			self.wiki_by_stem.entry(stem).or_insert_with(|| relative_path.to_string());
+		}
+
+		let mut in_fence = false;
+		for (line_index, line) in document.content.lines().enumerate() {
+			if is_fence(line) {
+				in_fence = !in_fence;
+				continue;
+			}
+			if in_fence {
+				continue;
+			}
+
+			let mut targets = HashSet::new();
+			for (raw_target, _) in extract_links(line) {
+				if let Some(target) = resolve_indexed_wiki_target(workspace, relative_path, &raw_target, &self.wiki_by_stem) {
+					targets.insert(target);
+				}
+			}
+			for raw_target in extract_markdown_targets(line) {
+				if let Some(target) = workspace.resolve_markdown_target(relative_path, raw_target).ok().flatten() {
+					targets.insert(target);
+				}
+			}
+			for target in targets {
+				if target == relative_path {
+					continue;
+				}
+				self.backlinks.entry(target).or_default().push(Backlink {
+					source_path: relative_path.to_string(),
+					line: line_index + 1,
+					preview: compact_preview(line, 180),
+				});
+			}
+		}
+		Ok(())
+	}
+
 	pub fn document_count(&self) -> usize {
 		self.document_count
 	}
@@ -839,6 +890,23 @@ mod tests {
 		let index = workspace.build_link_index().unwrap();
 
 		assert_eq!(index.resolve_bare_wiki_target("Same").as_deref(), Some("a/Same.md"));
+	}
+
+	#[test]
+	fn link_index_can_refresh_one_document() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("A.md"), "[target](B.md)").unwrap();
+		fs::write(temp.path().join("B.md"), "# B").unwrap();
+		fs::write(temp.path().join("C.md"), "# C").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let mut index = workspace.build_link_index().unwrap();
+		assert_eq!(index.backlinks("B.md").len(), 1);
+
+		fs::write(temp.path().join("A.md"), "[target](C.md)").unwrap();
+		index.refresh_document(&workspace, "A.md").unwrap();
+
+		assert!(index.backlinks("B.md").is_empty());
+		assert_eq!(index.backlinks("C.md").len(), 1);
 	}
 
 	#[test]

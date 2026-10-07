@@ -38,6 +38,7 @@ import {
 	workspaceList,
 	workspaceOpen,
 	workspaceReindex,
+	workspaceRefreshDocumentIndex,
 	workspaceSearch,
 	workspaceTags,
 	workspaceWatch,
@@ -569,6 +570,32 @@ function App() {
 	const invalidateSearchIndex = (reason: string) => {
 		setSearchIndexReady(false);
 		void rebuildSearchIndex(reason);
+	};
+
+	const refreshOneDocumentIndex = async (relativePath: string, reason: string) => {
+		if(!searchIndexReady() || searchIndexBuilding()){
+			invalidateSearchIndex(reason);
+			return;
+		}
+		try{
+			const refreshed = await workspaceRefreshDocumentIndex(relativePath);
+			if(!refreshed){
+				invalidateSearchIndex(reason);
+				return;
+			}
+			void workspaceTags()
+				.then(setTags)
+				.catch(error => updateStatus("Tag index read error: " + String(error), "error", "index"));
+			if(document()?.relativePath === relativePath){
+				void documentBacklinks(relativePath)
+					.then(setBacklinks)
+					.catch(error => updateStatus("Backlink index read error: " + String(error), "error", "links"));
+			}
+			void appendLog("info", "index", "Document indexes refreshed: " + relativePath + " / " + reason);
+		}catch(error){
+			invalidateSearchIndex(reason);
+			updateStatus("Document index refresh error: " + String(error), "error", "index");
+		}
 	};
 
 	const refreshHistory = async () => {
@@ -1413,7 +1440,7 @@ function App() {
 			setExternalConflict(false);
 			setRecoveryDraft(null);
 			void recoveryClear().catch(error => updateStatus("Recovery clear error: " + String(error), "error", "recovery"));
-			invalidateSearchIndex("Document save");
+			void refreshOneDocumentIndex(saved.relativePath, "Document save");
 			updateStatus(saved.relativePath + " を保存しました", "info", "save");
 			scheduleAutoSnapshot(saved.relativePath);
 		}catch(error){

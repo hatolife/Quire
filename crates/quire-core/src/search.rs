@@ -82,18 +82,7 @@ impl SearchIndex {
 					entry.1 += 1;
 				}
 			}
-			let lines = content
-				.lines()
-				.map(|line| IndexedLine {
-					original: line.to_string(),
-					lowercase: line.to_lowercase(),
-				})
-				.collect();
-			documents.push(IndexedDocument {
-				lowercase_path: relative_path.to_lowercase(),
-				relative_path,
-				lines,
-			});
+			documents.push(indexed_document(relative_path, &content));
 		}
 		let mut tags = tag_counts
 			.into_values()
@@ -101,6 +90,50 @@ impl SearchIndex {
 			.collect::<Vec<_>>();
 		tags.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
 		Ok(Self { documents, tags })
+	}
+
+	pub fn refresh_document(&mut self, workspace: &Workspace, relative_path: &str) -> Result<(), WorkspaceError> {
+		let path = workspace.document_path(relative_path)?;
+		let bytes = fs::read(&path)?;
+		let content = match String::from_utf8(bytes) {
+			Ok(content) => content,
+			Err(_) => return Ok(()),
+		};
+		let indexed = indexed_document(relative_path.to_string(), &content);
+		if let Some(existing) = self.documents.iter_mut().find(|document| document.relative_path == relative_path) {
+			*existing = indexed;
+		}else{
+			self.documents.push(indexed);
+			self.documents.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+		}
+		self.rebuild_tags();
+		Ok(())
+	}
+
+	fn rebuild_tags(&mut self) {
+		let mut tag_counts: HashMap<String, (String, usize)> = HashMap::new();
+		for document in &self.documents {
+			let mut in_fence = false;
+			for line in &document.lines {
+				if is_fence(&line.original) {
+					in_fence = !in_fence;
+					continue;
+				}
+				if in_fence {
+					continue;
+				}
+				for tag in extract_tags(&line.original) {
+					let key = tag.to_lowercase();
+					let entry = tag_counts.entry(key).or_insert_with(|| (tag, 0));
+					entry.1 += 1;
+				}
+			}
+		}
+		self.tags = tag_counts
+			.into_values()
+			.map(|(name, count)| TagInfo { name, count })
+			.collect();
+		self.tags.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
 	}
 
 	pub fn tags(&self) -> Vec<TagInfo> {
@@ -161,6 +194,21 @@ impl Workspace {
 
 	pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, WorkspaceError> {
 		Ok(self.build_search_index()?.search(query, limit))
+	}
+}
+
+fn indexed_document(relative_path: String, content: &str) -> IndexedDocument {
+	let lines = content
+		.lines()
+		.map(|line| IndexedLine {
+			original: line.to_string(),
+			lowercase: line.to_lowercase(),
+		})
+		.collect();
+	IndexedDocument {
+		lowercase_path: relative_path.to_lowercase(),
+		relative_path,
+		lines,
 	}
 }
 
@@ -276,6 +324,24 @@ mod tests {
 		assert_eq!(tags[0].count, 2);
 		assert_eq!(tags[1].name, "日本語/sub");
 		assert_eq!(tags[1].count, 1);
+	}
+
+	#[test]
+	fn search_index_can_refresh_one_document() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("a.md"), "#old\nbefore\n").unwrap();
+		fs::write(temp.path().join("b.md"), "untouched\n").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let mut index = workspace.build_search_index().unwrap();
+
+		fs::write(temp.path().join("a.md"), "#new\nafter\n").unwrap();
+		index.refresh_document(&workspace, "a.md").unwrap();
+
+		assert!(index.search("before", 20).is_empty());
+		assert_eq!(index.search("after", 20).len(), 1);
+		assert!(index.search("untouched", 20).iter().any(|hit| hit.relative_path == "b.md"));
+		assert!(index.tags().iter().any(|tag| tag.name == "new"));
+		assert!(!index.tags().iter().any(|tag| tag.name == "old"));
 	}
 
 	#[test]

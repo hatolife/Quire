@@ -121,6 +121,24 @@ async fn workspace_reindex(app: tauri::AppHandle) -> Result<Option<usize>, Strin
 }
 
 #[tauri::command]
+fn workspace_refresh_document_index(
+	relative_path: String,
+	state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+	let mut search_index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+	let mut link_index = state.link_index.lock().map_err(|_| "Link index state lock failed.".to_string())?;
+	let (Some(search_index), Some(link_index)) = (search_index.as_mut(), link_index.as_mut()) else {
+		return Ok(false);
+	};
+	with_workspace(&state, |workspace| {
+		search_index.refresh_document(workspace, &relative_path).map_err(|error| error.to_string())?;
+		link_index.refresh_document(workspace, &relative_path).map_err(|error| error.to_string())?;
+		Ok(())
+	})?;
+	Ok(true)
+}
+
+#[tauri::command]
 fn document_backlinks(relative_path: String, state: tauri::State<'_, AppState>) -> Result<Vec<Backlink>, String> {
 	let index = state.link_index.lock().map_err(|_| "Link index state lock failed.".to_string())?;
 	Ok(index.as_ref().map(|index| index.backlinks(&relative_path)).unwrap_or_default())
@@ -585,6 +603,7 @@ fn main() {
 			workspace_search,
 			workspace_tags,
 			workspace_reindex,
+			workspace_refresh_document_index,
 			document_backlinks,
 			document_resolve_markdown_link,
 			document_resolve_wiki_link,

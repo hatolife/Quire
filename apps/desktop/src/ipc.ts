@@ -114,6 +114,10 @@ export function workspaceReindex() {
 	return invoke<number | null>("workspace_reindex");
 }
 
+export function workspaceRefreshDocumentIndex(relativePath: string) {
+	return invoke<boolean>("workspace_refresh_document_index", { relativePath });
+}
+
 export function documentBacklinks(relativePath: string) {
 	return invoke<Backlink[]>("document_backlinks", { relativePath });
 }
