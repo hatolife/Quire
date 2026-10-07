@@ -975,7 +975,7 @@ mod tests {
 		assert_eq!(moved.document.relative_path, "archive/Renamed File.md");
 		let source = fs::read_to_string(temp.path().join("references").join("Source.md")).unwrap();
 		assert!(source.contains("[target](../archive/Renamed%20File.md?view=1#Heading)"));
-		assert!(source.contains("![image](../notes/Target%20File.md)"));
+		assert!(source.contains("![image](../archive/Renamed%20File.md)"));
 	}
 
 	#[test]
