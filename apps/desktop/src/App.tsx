@@ -14,6 +14,7 @@ import {
 	documentDelete,
 	documentMove,
 	documentOpen,
+	documentResolveMarkdownLink,
 	documentResolveWikiLink,
 	editorInsertText,
 	editorReplaceContent,
@@ -157,6 +158,7 @@ function App() {
 	const [autoSnapshotEnabled, setAutoSnapshotEnabled] = createSignal(true);
 	const [autoSnapshotDelaySeconds, setAutoSnapshotDelaySeconds] = createSignal(5);
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
+	const [browserTargetUrl, setBrowserTargetUrl] = createSignal<string | undefined>();
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
 	const [recoveryDraft, setRecoveryDraft] = createSignal<RecoveryDraft | null>(null);
 	const [recoveryTrackingReady, setRecoveryTrackingReady] = createSignal(false);
@@ -895,22 +897,60 @@ function App() {
 	};
 
 	const handlePreviewClick = async (event: MouseEvent) => {
-		const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href^='quire-wiki:']");
+		const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
 		if(!anchor){ return; }
-		event.preventDefault();
+		const href = anchor.getAttribute("href") ?? "";
+		if(!href){ return; }
 		const current = document();
 		if(!current){ return; }
-		const encoded = anchor.getAttribute("href")?.slice("quire-wiki:".length) ?? "";
-		const target = decodeURIComponent(encoded);
+
+		if(href.startsWith("quire-wiki:")){
+			event.preventDefault();
+			const target = decodeURIComponent(href.slice("quire-wiki:".length));
+			try{
+				const resolved = await documentResolveWikiLink(current.relativePath, target);
+				if(!resolved){
+					updateStatus("未解決Wiki Link: [[" + target + "]]", "warn", "links");
+					return;
+				}
+				await openDocument(resolved);
+			}catch(error){
+				updateStatus("Wiki Link error: " + String(error), "error", "links");
+			}
+			return;
+		}
+
+		if(/^https?:\/\//i.test(href)){
+			event.preventDefault();
+			setBrowserTargetUrl(href);
+			setRightPaneMode("browser");
+			updateStatus("Browserへ開きました: " + href, "info", "browser");
+			return;
+		}
+
+		if(href.startsWith("#")){
+			event.preventDefault();
+			updateStatus("Document内heading linkは未対応です: " + href, "warn", "links");
+			return;
+		}
+
+		if(/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("//")){
+			event.preventDefault();
+			updateStatus("このlink schemeはまだ開けません: " + href, "warn", "links");
+			return;
+		}
+
+		event.preventDefault();
+		const decoded = decodeAssetSource(href);
 		try{
-			const resolved = await documentResolveWikiLink(current.relativePath, target);
+			const resolved = await documentResolveMarkdownLink(current.relativePath, decoded);
 			if(!resolved){
-				updateStatus("未解決Wiki Link: [[" + target + "]]", "warn", "links");
+				updateStatus("Workspace内Markdownとして解決できません: " + href, "warn", "links");
 				return;
 			}
 			await openDocument(resolved);
 		}catch(error){
-			updateStatus("Wiki Link error: " + String(error), "error", "links");
+			updateStatus("Markdown link error: " + String(error), "error", "links");
 		}
 	};
 
@@ -1218,6 +1258,7 @@ function App() {
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
 								<BrowserPane
 									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !settingsOpen() && !logOpen() && !recoveryDraft()}
+									navigateTo={browserTargetUrl()}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
 								/>
 							</div>

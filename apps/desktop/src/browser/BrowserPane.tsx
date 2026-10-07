@@ -5,6 +5,7 @@ import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 
 type Props = {
 	active: boolean;
+	navigateTo?: string;
 	onStatus: (message: string) => void;
 };
 
@@ -89,6 +90,16 @@ export default function BrowserPane(props: Props) {
 		setCurrentUrl(url);
 		await createBrowser(url);
 	};
+
+	createEffect(() => {
+		const requested = props.navigateTo;
+		if(!requested || requested === currentUrl()){ return; }
+		const normalized = normalizeUrl(requested);
+		if(!normalized){ return; }
+		setUrlDraft(normalized);
+		setCurrentUrl(normalized);
+		void createBrowser(normalized);
+	});
 
 	createEffect(() => {
 		const active = props.active;

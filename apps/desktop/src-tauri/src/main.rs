@@ -82,6 +82,17 @@ fn document_backlinks(relative_path: String, state: tauri::State<'_, AppState>) 
 }
 
 #[tauri::command]
+fn document_resolve_markdown_link(
+	source_relative_path: String,
+	target: String,
+	state: tauri::State<'_, AppState>,
+) -> Result<Option<String>, String> {
+	with_workspace(&state, |workspace| {
+		workspace.resolve_markdown_target(&source_relative_path, &target).map_err(|error| error.to_string())
+	})
+}
+
+#[tauri::command]
 fn document_resolve_wiki_link(
 	source_relative_path: String,
 	target: String,
@@ -431,6 +442,7 @@ fn main() {
 			workspace_search,
 			workspace_reindex,
 			document_backlinks,
+			document_resolve_markdown_link,
 			document_resolve_wiki_link,
 			document_open,
 			document_save,

@@ -106,6 +106,10 @@ export function documentBacklinks(relativePath: string) {
 	return invoke<Backlink[]>("document_backlinks", { relativePath });
 }
 
+export function documentResolveMarkdownLink(sourceRelativePath: string, target: string) {
+	return invoke<string | null>("document_resolve_markdown_link", { sourceRelativePath, target });
+}
+
 export function documentResolveWikiLink(sourceRelativePath: string, target: string) {
 	return invoke<string | null>("document_resolve_wiki_link", { sourceRelativePath, target });
 }

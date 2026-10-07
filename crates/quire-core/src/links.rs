@@ -216,6 +216,49 @@ impl Workspace {
 		Ok(plans)
 	}
 
+	pub fn resolve_markdown_target(&self, source_relative_path: &str, raw_target: &str) -> Result<Option<String>, WorkspaceError> {
+		let target = raw_target
+			.split('#')
+			.next()
+			.unwrap_or("")
+			.split('?')
+			.next()
+			.unwrap_or("")
+			.trim()
+			.replace('\\', "/");
+		if target.is_empty() {
+			return Ok(Some(source_relative_path.to_string()));
+		}
+		if target.starts_with('/') || target.starts_with("//") || target.contains("://") {
+			return Ok(None);
+		}
+
+		let source = self.document_path(source_relative_path)?;
+		let parent = source
+			.parent()
+			.ok_or_else(|| WorkspaceError::InvalidRelativePath(source_relative_path.to_string()))?;
+		let relative = Path::new(&target);
+		if relative.is_absolute() {
+			return Ok(None);
+		}
+		let mut candidate = parent.join(relative);
+		if !candidate.exists() && candidate.extension().is_none() {
+			candidate.set_extension("md");
+		}
+		if !candidate.exists() {
+			return Ok(None);
+		}
+		let canonical = fs::canonicalize(candidate)?;
+		if !canonical.starts_with(&self.root) || !canonical.is_file() || !has_markdown_extension(&canonical) {
+			return Ok(None);
+		}
+		Ok(Some(portable_path(
+			canonical
+				.strip_prefix(&self.root)
+				.map_err(|_| WorkspaceError::InvalidRelativePath(raw_target.to_string()))?,
+		)))
+	}
+
 	pub fn resolve_wiki_target(&self, source_relative_path: &str, raw_target: &str) -> Result<Option<String>, WorkspaceError> {
 		let target = raw_target
 			.split('#')
@@ -416,6 +459,26 @@ fn portable_path(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn markdown_target_resolves_relative_document_and_rejects_escape() {
+		let temp = tempfile::tempdir().unwrap();
+		let workspace_root = temp.path().join("workspace");
+		fs::create_dir_all(workspace_root.join("notes").join("nested")).unwrap();
+		fs::write(workspace_root.join("notes").join("Target.md"), "# Target").unwrap();
+		fs::write(workspace_root.join("notes").join("nested").join("Source.md"), "[Target](../Target.md)").unwrap();
+		fs::write(temp.path().join("outside.md"), "# Outside").unwrap();
+		let workspace = Workspace::open(&workspace_root).unwrap();
+
+		assert_eq!(
+			workspace.resolve_markdown_target("notes/nested/Source.md", "../Target.md#Heading").unwrap().as_deref(),
+			Some("notes/Target.md")
+		);
+		assert_eq!(
+			workspace.resolve_markdown_target("notes/nested/Source.md", "../../../outside.md").unwrap(),
+			None
+		);
+	}
 
 	#[test]
 	fn wiki_links_resolve_filename_path_alias_and_heading() {
