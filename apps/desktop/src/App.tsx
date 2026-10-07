@@ -359,6 +359,46 @@ function renderFrontMatter(frontMatter: string | undefined): string {
 		+ '</section>';
 }
 
+function renderTaggedText(value: string): string {
+	const pattern = /(^|[^\p{L}\p{N}_\-\/#])#([\p{L}\p{N}_\-/]+)/gu;
+	let result = "";
+	let last = 0;
+	for(const match of value.matchAll(pattern)){
+		const tag = match[2];
+		if(!/[\p{L}_]/u.test(tag)){ continue; }
+		const matchIndex = match.index ?? 0;
+		const hashIndex = matchIndex + match[1].length;
+		result += escapePreviewHtml(value.slice(last, hashIndex));
+		result += '<a class="quire-tag" href="quire-tag:' + encodeURIComponent(tag) + '">#'
+			+ escapePreviewHtml(tag) + '</a>';
+		last = hashIndex + tag.length + 1;
+	}
+	result += escapePreviewHtml(value.slice(last));
+	return result;
+}
+
+function decorateTagTokens(tokens: any[]) {
+	let linkDepth = 0;
+	for(const token of tokens){
+		if(token.type === "link_open"){
+			++linkDepth;
+			continue;
+		}
+		if(token.type === "link_close"){
+			linkDepth = Math.max(0, linkDepth - 1);
+			continue;
+		}
+		if(token.type === "text" && linkDepth === 0 && token.content.includes("#")){
+			token.type = "quire_tag_text";
+		}
+		if(token.children){
+			decorateTagTokens(token.children);
+		}
+	}
+}
+
+markdown.renderer.rules.quire_tag_text = (tokens, index) => renderTaggedText(tokens[index].content);
+
 function decorateCalloutTokens(tokens: any[]) {
 	for(let index = 0; index < tokens.length; ++index){
 		if(tokens[index].type !== "blockquote_open"){ continue; }
@@ -460,6 +500,7 @@ function renderPreview(source: string, sourceDocument?: string, allowDocumentEmb
 	const environment = {};
 	const tokens = markdown.parse(parsed.body, environment);
 	decoratePreviewTokens(tokens, parsed.lineOffset, sourceDocument, allowDocumentEmbeds);
+	decorateTagTokens(tokens);
 	decorateCalloutTokens(tokens);
 	decorateTaskListTokens(tokens, allowDocumentEmbeds);
 	return renderFrontMatter(parsed.frontMatter) + markdown.renderer.render(tokens, markdown.options, environment);

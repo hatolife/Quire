@@ -1358,3 +1358,21 @@ button.primary {
 	min-height: 0;
 	height: auto;
 }
+
+.markdown-preview a.quire-tag {
+	display: inline-block;
+	padding: 0 3px;
+	border-radius: 3px;
+	background: #202938;
+	color: #9dc1ff;
+	text-decoration: none;
+}
+
+.markdown-preview a.quire-tag:hover {
+	background: #29364a;
+	text-decoration: underline;
+}
+
+.frontmatter a.property-tag {
+	text-decoration: none;
+}
