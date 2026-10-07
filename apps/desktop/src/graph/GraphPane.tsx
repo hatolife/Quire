@@ -67,21 +67,50 @@ export default function GraphPane(props: Props) {
 			return { nodes: [] as PositionedNode[], edges: [] as Array<{ source: PositionedNode; target: PositionedNode }> };
 		}
 		const sorted = [...graph.nodes].sort((a, b) => {
+			if(a.path === props.currentPath){ return -1; }
+			if(b.path === props.currentPath){ return 1; }
 			const degree = (b.incoming + b.outgoing) - (a.incoming + a.outgoing);
 			return degree || a.path.localeCompare(b.path);
 		});
-		const count = sorted.length;
-		const positioned = sorted.map((node, index) => {
-			const ring = count <= 1 ? 0 : index / count;
-			const angle = ring * Math.PI * 2 - Math.PI / 2;
-			const degree = node.incoming + node.outgoing;
-			const radius = count <= 1 ? 0 : 34 + Math.min(10, degree * 1.5);
-			return {
-				...node,
-				x: 50 + Math.cos(angle) * radius,
-				y: 50 + Math.sin(angle) * radius,
-			};
-		});
+		const positioned: PositionedNode[] = [];
+		const currentIndex = props.currentPath ? sorted.findIndex(node => node.path === props.currentPath) : -1;
+
+		if(mode() === "local" && currentIndex >= 0){
+			const current = sorted[currentIndex];
+			positioned.push({ ...current, x: 50, y: 50 });
+			const neighbors = sorted.filter((_, index) => index !== currentIndex);
+			const count = neighbors.length;
+			for(let index = 0; index < count; ++index){
+				const node = neighbors[index];
+				const angle = (index / Math.max(1, count)) * Math.PI * 2 - Math.PI / 2;
+				const radius = count <= 6 ? 31 : 36;
+				positioned.push({
+					...node,
+					x: 50 + Math.cos(angle) * radius,
+					y: 50 + Math.sin(angle) * radius,
+				});
+			}
+		}else{
+			const count = sorted.length;
+			const ringCapacity = Math.max(8, Math.ceil(Math.sqrt(count) * 2.4));
+			let index = 0;
+			let ringIndex = 0;
+			while(index < count){
+				const remaining = count - index;
+				const capacity = ringIndex === 0 ? Math.min(1, remaining) : Math.min(ringCapacity * ringIndex, remaining);
+				const radius = ringIndex === 0 ? 0 : Math.min(43, 13 + ringIndex * 11);
+				for(let slot = 0; slot < capacity; ++slot){
+					const node = sorted[index++];
+					const angle = capacity <= 1 ? 0 : (slot / capacity) * Math.PI * 2 - Math.PI / 2;
+					positioned.push({
+						...node,
+						x: 50 + Math.cos(angle) * radius,
+						y: 50 + Math.sin(angle) * radius,
+					});
+				}
+				++ringIndex;
+			}
+		}
 		const byPath = new Map(positioned.map(node => [node.path, node]));
 		const edges = graph.edges
 			.map(edge => ({ source: byPath.get(edge.source), target: byPath.get(edge.target) }))
