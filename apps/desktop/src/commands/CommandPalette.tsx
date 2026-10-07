@@ -6,7 +6,7 @@ export type AppCommand = {
 	keywords?: string;
 	shortcut?: string;
 	enabled?: boolean;
-	run: () => void | Promise<void>;
+	run: () => unknown | Promise<unknown>;
 };
 
 type Props = {
