@@ -87,10 +87,10 @@ function isLocalAssetSource(source: string): boolean {
 	return !/^[a-z][a-z0-9+.-]*:/i.test(source);
 }
 
-function decoratePreviewTokens(tokens: any[]) {
+function decoratePreviewTokens(tokens: any[], lineOffset = 0) {
 	for(const token of tokens){
 		if(token.map && token.nesting === 1){
-			token.attrSet("data-source-line", String(token.map[0]));
+			token.attrSet("data-source-line", String(token.map[0] + lineOffset));
 		}
 		if(token.type === "image"){
 			const source = token.attrGet("src");
@@ -100,16 +100,53 @@ function decoratePreviewTokens(tokens: any[]) {
 			}
 		}
 		if(token.children){
-			decoratePreviewTokens(token.children);
+			decoratePreviewTokens(token.children, lineOffset);
 		}
 	}
 }
 
+function escapePreviewHtml(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+}
+
+function splitFrontMatter(source: string): { body: string; lineOffset: number; frontMatter?: string } {
+	const normalized = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+	if(!normalized.startsWith("---\n")){ return { body: normalized, lineOffset: 0 }; }
+	const lines = normalized.split("\n");
+	for(let index = 1; index < lines.length; ++index){
+		if(lines[index] !== "---" && lines[index] !== "..."){ continue; }
+		return {
+			frontMatter: lines.slice(1, index).join("\n"),
+			body: lines.slice(index + 1).join("\n"),
+			lineOffset: index + 1,
+		};
+	}
+	return { body: normalized, lineOffset: 0 };
+}
+
+function renderFrontMatter(frontMatter: string | undefined): string {
+	if(frontMatter === undefined){ return ""; }
+	return [
+		'<details class="frontmatter" data-source-line="0">',
+		"<summary>Properties</summary>",
+		"<pre>",
+		escapePreviewHtml(frontMatter),
+		"</pre>",
+		"</details>",
+	].join("");
+}
+
 function renderPreview(source: string): string {
+	const parsed = splitFrontMatter(source);
 	const environment = {};
-	const tokens = markdown.parse(source, environment);
-	decoratePreviewTokens(tokens);
-	return markdown.renderer.render(tokens, markdown.options, environment);
+	const tokens = markdown.parse(parsed.body, environment);
+	decoratePreviewTokens(tokens, parsed.lineOffset);
+	return renderFrontMatter(parsed.frontMatter) + markdown.renderer.render(tokens, markdown.options, environment);
 }
 
 function contentForEditor(content: string): string {
