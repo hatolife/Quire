@@ -202,6 +202,25 @@ impl Workspace {
 		Ok(documents)
 	}
 
+	pub fn document_exists(&self, relative_path: &str) -> Result<bool, WorkspaceError> {
+		let relative = Path::new(relative_path);
+		if relative.as_os_str().is_empty()
+			|| relative.is_absolute()
+			|| relative.components().any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
+		{
+			return Err(WorkspaceError::InvalidRelativePath(relative_path.to_string()));
+		}
+		let candidate = self.root.join(relative);
+		if !candidate.exists() {
+			return Ok(false);
+		}
+		let canonical = fs::canonicalize(candidate)?;
+		if !canonical.starts_with(&self.root) {
+			return Err(WorkspaceError::InvalidRelativePath(relative_path.to_string()));
+		}
+		Ok(canonical.is_file())
+	}
+
 	pub fn document_path(&self, relative_path: &str) -> Result<PathBuf, WorkspaceError> {
 		let path = self.resolve_existing(relative_path)?;
 		if !path.is_file() {
@@ -522,6 +541,20 @@ mod tests {
 
 		assert!(matches!(
 			workspace.read_asset("note.md", "../outside.png"),
+			Err(WorkspaceError::InvalidRelativePath(_))
+		));
+	}
+
+	#[test]
+	fn document_exists_distinguishes_missing_and_escape() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("note.md"), "# Note").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+
+		assert!(workspace.document_exists("note.md").unwrap());
+		assert!(!workspace.document_exists("missing.md").unwrap());
+		assert!(matches!(
+			workspace.document_exists("../outside.md"),
 			Err(WorkspaceError::InvalidRelativePath(_))
 		));
 	}

@@ -16,6 +16,7 @@ import {
 	documentCreate,
 	documentCreateWithContent,
 	documentDelete,
+	documentExists,
 	documentMove,
 	documentOpen,
 	documentResolveMarkdownLink,
@@ -2043,11 +2044,9 @@ function App() {
 		const relativePath = (directory ? directory + "/" : "") + date + ".md";
 
 		try{
-			try{
+			if(await documentExists(relativePath)){
 				await openDocument(relativePath);
 				return;
-			}catch{
-				// Missing today's note is expected on first open.
 			}
 
 			if(directory){ await workspaceEnsureDirectory(directory); }

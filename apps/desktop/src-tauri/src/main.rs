@@ -204,6 +204,11 @@ fn document_resolve_wiki_link(
 }
 
 #[tauri::command]
+fn document_exists(relative_path: String, state: tauri::State<'_, AppState>) -> Result<bool, String> {
+	with_workspace(&state, |workspace| workspace.document_exists(&relative_path).map_err(|error| error.to_string()))
+}
+
+#[tauri::command]
 fn document_open(relative_path: String, state: tauri::State<'_, AppState>) -> Result<Document, String> {
 	with_workspace(&state, |workspace| workspace.read_document(&relative_path).map_err(|error| error.to_string()))
 }
@@ -652,6 +657,7 @@ fn main() {
 			document_backlinks,
 			document_resolve_markdown_link,
 			document_resolve_wiki_link,
+			document_exists,
 			document_open,
 			document_save,
 			document_create_with_content,

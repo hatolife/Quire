@@ -181,6 +181,10 @@ export function documentResolveWikiLink(sourceRelativePath: string, target: stri
 	return invoke<string | null>("document_resolve_wiki_link", { sourceRelativePath, target });
 }
 
+export function documentExists(relativePath: string) {
+	return invoke<boolean>("document_exists", { relativePath });
+}
+
 export function documentOpen(relativePath: string) {
 	return invoke<Document>("document_open", { relativePath });
 }
