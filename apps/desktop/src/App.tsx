@@ -141,11 +141,53 @@ function renderFrontMatter(frontMatter: string | undefined): string {
 	].join("");
 }
 
+function decorateCalloutTokens(tokens: any[]) {
+	for(let index = 0; index < tokens.length; ++index){
+		if(tokens[index].type !== "blockquote_open"){ continue; }
+		let depth = 1;
+		let inlineIndex = -1;
+		for(let cursor = index + 1; cursor < tokens.length && depth > 0; ++cursor){
+			if(tokens[cursor].type === "blockquote_open"){ ++depth; }
+			if(tokens[cursor].type === "blockquote_close"){ --depth; }
+			if(depth === 1 && inlineIndex < 0 && tokens[cursor].type === "inline"){
+				inlineIndex = cursor;
+			}
+		}
+		if(inlineIndex < 0){ continue; }
+
+		const inline = tokens[inlineIndex];
+		const match = inline.content.match(/^\[!([A-Za-z0-9_-]+)\]([+-])?[ \t]*(.*)$/);
+		if(!match){ continue; }
+
+		const type = match[1].toLowerCase();
+		const title = match[3].trim() || match[1].toUpperCase();
+		tokens[index].attrJoin("class", "callout callout-" + type);
+		tokens[index].attrSet("data-callout", type);
+		if(match[2]){ tokens[index].attrSet("data-callout-fold", match[2]); }
+
+		for(let cursor = index + 1; cursor < inlineIndex; ++cursor){
+			if(tokens[cursor].type === "paragraph_open"){
+				tokens[cursor].attrJoin("class", "callout-title");
+				break;
+			}
+		}
+
+		inline.content = title;
+		if(Array.isArray(inline.children) && inline.children.length > 0){
+			inline.children[0].content = title;
+			for(let childIndex = 1; childIndex < inline.children.length; ++childIndex){
+				inline.children[childIndex].content = "";
+			}
+		}
+	}
+}
+
 function renderPreview(source: string): string {
 	const parsed = splitFrontMatter(source);
 	const environment = {};
 	const tokens = markdown.parse(parsed.body, environment);
 	decoratePreviewTokens(tokens, parsed.lineOffset);
+	decorateCalloutTokens(tokens);
 	return renderFrontMatter(parsed.frontMatter) + markdown.renderer.render(tokens, markdown.options, environment);
 }
 

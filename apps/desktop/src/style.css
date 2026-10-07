@@ -931,3 +931,28 @@ button.primary {
 	white-space: pre-wrap;
 	word-break: break-word;
 }
+
+.markdown-preview blockquote.callout {
+	margin: 1em 0;
+	padding: 10px 14px;
+	border-left-width: 4px;
+	border-left-style: solid;
+	border-radius: 4px;
+	background: #1c1c1c;
+}
+
+.markdown-preview blockquote.callout > .callout-title {
+	margin-top: 0;
+	margin-bottom: 6px;
+	font-weight: 700;
+}
+
+.markdown-preview blockquote.callout > :last-child {
+	margin-bottom: 0;
+}
+
+.markdown-preview blockquote.callout[data-callout-fold] > .callout-title::after {
+	content: "  ▾";
+	color: #777;
+	font-weight: 400;
+}
