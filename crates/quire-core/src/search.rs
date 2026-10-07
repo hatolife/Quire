@@ -87,18 +87,21 @@ impl SearchIndex {
 		let mut hits = Vec::new();
 
 		for document in &self.documents {
-			if document.lowercase_path.contains(&query_lower) {
-				hits.push(SearchHit {
-					kind: SearchKind::Filename,
-					relative_path: document.relative_path.clone(),
-					line: None,
-					preview: document.relative_path.clone(),
-				});
-				if hits.len() >= limit {
-					break;
-				}
+			if !document.lowercase_path.contains(&query_lower) {
+				continue;
 			}
+			hits.push(SearchHit {
+				kind: SearchKind::Filename,
+				relative_path: document.relative_path.clone(),
+				line: None,
+				preview: document.relative_path.clone(),
+			});
+			if hits.len() >= limit {
+				return hits;
+			}
+		}
 
+		for document in &self.documents {
 			for (index, line) in document.lines.iter().enumerate() {
 				if !line.lowercase.contains(&query_lower) {
 					continue;
@@ -110,11 +113,8 @@ impl SearchIndex {
 					preview: compact_preview(&line.original, 180),
 				});
 				if hits.len() >= limit {
-					break;
+					return hits;
 				}
-			}
-			if hits.len() >= limit {
-				break;
 			}
 		}
 		hits
@@ -202,6 +202,23 @@ mod tests {
 				&& hit.relative_path == "notes/Alpha.md"
 				&& hit.line == Some(2)
 		}));
+	}
+
+	#[test]
+	fn filename_matches_are_ranked_before_content_matches() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("a.md"), "target\ntarget\ntarget\n").unwrap();
+		fs::write(temp.path().join("target-note.md"), "no body match\n").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let index = workspace.build_search_index().unwrap();
+
+		let hits = index.search("target", 2);
+
+		assert_eq!(hits.len(), 2);
+		assert_eq!(hits[0].kind, SearchKind::Filename);
+		assert_eq!(hits[0].relative_path, "target-note.md");
+		assert_eq!(hits[1].kind, SearchKind::Content);
+		assert_eq!(hits[1].relative_path, "a.md");
 	}
 
 	#[test]
