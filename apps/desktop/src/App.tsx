@@ -1240,6 +1240,17 @@ function App() {
 		commandKeyHandler = (event: KeyboardEvent) => {
 			if(!event.ctrlKey || event.altKey){ return; }
 			const key = event.key.toLowerCase();
+			if(key === "tab"){
+				const paths = openDocuments();
+				const currentPath = document()?.relativePath;
+				if(paths.length <= 1 || !currentPath){ return; }
+				event.preventDefault();
+				const currentIndex = Math.max(0, paths.indexOf(currentPath));
+				const delta = event.shiftKey ? -1 : 1;
+				const nextIndex = (currentIndex + delta + paths.length) % paths.length;
+				void openDocument(paths[nextIndex]);
+				return;
+			}
 			if(event.shiftKey && key === "p"){
 				event.preventDefault();
 				setQuickOpenVisible(false);
@@ -1704,13 +1715,11 @@ function App() {
 		setOpenDocuments(remaining);
 		if(!closingCurrent){ return; }
 
-		if(remaining.length === 0){
-			setDocument(null);
-			setDraft("");
-			setBacklinks([]);
-			setExternalConflict(false);
-			return;
-		}
+		setDocument(null);
+		setDraft("");
+		setBacklinks([]);
+		setExternalConflict(false);
+		if(remaining.length === 0){ return; }
 
 		const nextIndex = Math.min(index, remaining.length - 1);
 		await openDocument(remaining[nextIndex]);
@@ -1918,6 +1927,34 @@ function App() {
 			shortcut: "Ctrl+S",
 			enabled: document() !== null && dirty(),
 			run: () => saveDocument(),
+		},
+		{
+			id: "tabs.next",
+			title: "次のDocumentタブ",
+			keywords: "tab next document",
+			shortcut: "Ctrl+Tab",
+			enabled: openDocuments().length > 1,
+			run: () => {
+				const paths = openDocuments();
+				const currentPath = document()?.relativePath;
+				if(!currentPath || paths.length <= 1){ return; }
+				const index = Math.max(0, paths.indexOf(currentPath));
+				return openDocument(paths[(index + 1) % paths.length]);
+			},
+		},
+		{
+			id: "tabs.previous",
+			title: "前のDocumentタブ",
+			keywords: "tab previous document",
+			shortcut: "Ctrl+Shift+Tab",
+			enabled: openDocuments().length > 1,
+			run: () => {
+				const paths = openDocuments();
+				const currentPath = document()?.relativePath;
+				if(!currentPath || paths.length <= 1){ return; }
+				const index = Math.max(0, paths.indexOf(currentPath));
+				return openDocument(paths[(index - 1 + paths.length) % paths.length]);
+			},
 		},
 		{
 			id: "workspace.quickOpen",
