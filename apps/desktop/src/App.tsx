@@ -323,7 +323,8 @@ function renderFrontMatterValue(key: string, value: string): string {
 	const normalizedKey = key.toLowerCase();
 	if(normalizedKey === "tags" || normalizedKey === "tag"){
 		const tag = value.replace(/^#/, "");
-		return '<span class="property-chip property-tag">#' + escapePreviewHtml(tag) + '</span>';
+		return '<a class="property-chip property-tag" href="quire-tag:' + encodeURIComponent(tag) + '">#'
+			+ escapePreviewHtml(tag) + '</a>';
 	}
 	if(normalizedKey === "aliases" || normalizedKey === "alias"){
 		return '<span class="property-chip property-alias">' + escaped + '</span>';
@@ -1802,6 +1803,17 @@ function App() {
 		const current = document();
 		if(!current){ return; }
 		const sourceDocument = anchor.dataset.quireSourceDocument || current.relativePath;
+
+		if(href.startsWith("quire-tag:")){
+			event.preventDefault();
+			const tag = decodeURIComponent(href.slice("quire-tag:".length));
+			setSearchQuery("tag:" + tag);
+			setExplorerMode("tags");
+			explorerSearchInput?.focus();
+			explorerSearchInput?.select();
+			updateStatus("Tag検索: #" + tag, "info", "search");
+			return;
+		}
 
 		if(href.startsWith("quire-wiki:")){
 			event.preventDefault();
