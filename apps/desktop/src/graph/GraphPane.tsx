@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import type { LinkGraph } from "../ipc";
 
 type Props = {
@@ -21,8 +21,48 @@ function label(path: string): string {
 }
 
 export default function GraphPane(props: Props) {
-	const layout = createMemo(() => {
+	const [mode, setMode] = createSignal<"local" | "all">("local");
+	const [query, setQuery] = createSignal("");
+	const [showIsolated, setShowIsolated] = createSignal(false);
+
+	const filteredGraph = createMemo(() => {
 		const graph = props.graph;
+		if(!graph){ return null; }
+		const queryValue = query().trim().toLocaleLowerCase();
+		let allowed = new Set(graph.nodes.map(node => node.path));
+
+		if(mode() === "local" && props.currentPath){
+			allowed = new Set([props.currentPath]);
+			for(const edge of graph.edges){
+				if(edge.source === props.currentPath){ allowed.add(edge.target); }
+				if(edge.target === props.currentPath){ allowed.add(edge.source); }
+			}
+		}
+
+		if(queryValue){
+			allowed = new Set([...allowed].filter(path => path.toLocaleLowerCase().includes(queryValue)));
+		}
+
+		const edges = graph.edges.filter(edge => allowed.has(edge.source) && allowed.has(edge.target));
+		const connected = new Set<string>();
+		for(const edge of edges){
+			connected.add(edge.source);
+			connected.add(edge.target);
+		}
+		const nodes = graph.nodes.filter(node => {
+			if(!allowed.has(node.path)){ return false; }
+			if(showIsolated()){ return true; }
+			return connected.has(node.path) || node.path === props.currentPath;
+		});
+		const visible = new Set(nodes.map(node => node.path));
+		return {
+			nodes,
+			edges: edges.filter(edge => visible.has(edge.source) && visible.has(edge.target)),
+		};
+	});
+
+	const layout = createMemo(() => {
+		const graph = filteredGraph();
 		if(!graph || graph.nodes.length === 0){
 			return { nodes: [] as PositionedNode[], edges: [] as Array<{ source: PositionedNode; target: PositionedNode }> };
 		}
@@ -51,11 +91,27 @@ export default function GraphPane(props: Props) {
 
 	return (
 		<div class="graph-pane">
-			<Show
-				when={layout().nodes.length > 0}
-				fallback={<div class="empty-pane">Graphを表示するlinkがありません。</div>}
-			>
-				<svg class="graph-canvas" viewBox="0 0 100 100" role="img" aria-label="Workspace link graph">
+			<div class="graph-toolbar">
+				<button classList={{ active: mode() === "local" }} disabled={!props.currentPath} onClick={() => setMode("local")}>Local</button>
+				<button classList={{ active: mode() === "all" }} onClick={() => setMode("all")}>All</button>
+				<input
+					type="search"
+					value={query()}
+					onInput={event => setQuery(event.currentTarget.value)}
+					placeholder="Graphを絞り込み"
+				/>
+				<label>
+					<input type="checkbox" checked={showIsolated()} onChange={event => setShowIsolated(event.currentTarget.checked)} />
+					孤立
+				</label>
+				<span>{layout().nodes.length} nodes / {layout().edges.length} edges</span>
+			</div>
+			<div class="graph-stage">
+				<Show
+					when={layout().nodes.length > 0}
+					fallback={<div class="empty-pane">Graphを表示するlinkがありません。</div>}
+				>
+					<svg class="graph-canvas" viewBox="0 0 100 100" role="img" aria-label="Workspace link graph">
 					<g class="graph-edges">
 						<For each={layout().edges}>
 							{edge => <line x1={edge.source.x} y1={edge.source.y} x2={edge.target.x} y2={edge.target.y} />}
@@ -81,8 +137,9 @@ export default function GraphPane(props: Props) {
 							}}
 						</For>
 					</g>
-				</svg>
-			</Show>
+					</svg>
+				</Show>
+			</div>
 		</div>
 	);
 }

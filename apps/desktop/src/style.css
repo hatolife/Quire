@@ -1503,3 +1503,59 @@ button.primary {
 .graph-node.isolated {
 	opacity: 0.5;
 }
+
+.graph-pane {
+	display: grid;
+	grid-template-rows: 34px minmax(0, 1fr);
+}
+
+.graph-toolbar {
+	display: grid;
+	grid-template-columns: auto auto minmax(120px, 1fr) auto auto;
+	align-items: center;
+	gap: 4px;
+	padding: 4px;
+	border-bottom: 1px solid #303030;
+	background: #1d1d1d;
+	font-size: 11px;
+}
+
+.graph-toolbar button {
+	height: 24px;
+	padding: 2px 7px;
+	border-color: transparent;
+	background: transparent;
+}
+
+.graph-toolbar button.active {
+	border-color: #484848;
+	background: #303030;
+}
+
+.graph-toolbar input[type="search"] {
+	min-width: 0;
+	height: 24px;
+	padding: 2px 6px;
+	border: 1px solid #3a3a3a;
+	border-radius: 4px;
+	background: #111;
+	color: #ddd;
+}
+
+.graph-toolbar label {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	color: #999;
+	white-space: nowrap;
+}
+
+.graph-toolbar > span {
+	color: #777;
+	white-space: nowrap;
+}
+
+.graph-stage {
+	min-height: 0;
+	position: relative;
+}
