@@ -16,6 +16,7 @@ pub struct DesktopSettings {
 	pub auto_snapshot_enabled: bool,
 	pub auto_snapshot_delay_seconds: u64,
 	pub history_retention_snapshots: usize,
+	pub template_directory: String,
 	pub last_right_pane: String,
 	pub last_browser_url: Option<String>,
 }
@@ -33,6 +34,7 @@ impl Default for DesktopSettings {
 			auto_snapshot_enabled: true,
 			auto_snapshot_delay_seconds: 5,
 			history_retention_snapshots: 200,
+			template_directory: "Templates".to_string(),
 			last_right_pane: "preview".to_string(),
 			last_browser_url: None,
 		}

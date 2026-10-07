@@ -53,6 +53,13 @@ fn workspace_open(path: String, state: tauri::State<'_, AppState>) -> Result<Wor
 }
 
 #[tauri::command]
+fn workspace_templates(relative_directory: String, state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
+	with_workspace(&state, |workspace| {
+		workspace.markdown_documents_under(&relative_directory).map_err(|error| error.to_string())
+	})
+}
+
+#[tauri::command]
 fn workspace_list(relative_path: String, state: tauri::State<'_, AppState>) -> Result<Vec<WorkspaceEntry>, String> {
 	with_workspace(&state, |workspace| workspace.list_directory(&relative_path).map_err(|error| error.to_string()))
 }
@@ -197,6 +204,17 @@ fn document_open(relative_path: String, state: tauri::State<'_, AppState>) -> Re
 #[tauri::command]
 fn document_save(relative_path: String, content: String, expected_revision: String, state: tauri::State<'_, AppState>) -> Result<Document, String> {
 	with_workspace(&state, |workspace| workspace.save_document(&relative_path, &content, &expected_revision).map_err(|error| error.to_string()))
+}
+
+#[tauri::command]
+fn document_create_with_content(
+	relative_path: String,
+	content: String,
+	state: tauri::State<'_, AppState>,
+) -> Result<Document, String> {
+	with_workspace(&state, |workspace| {
+		workspace.create_document(&relative_path, &content).map_err(|error| error.to_string())
+	})
 }
 
 #[tauri::command]
@@ -613,6 +631,7 @@ fn main() {
 		.manage(watcher::WatcherState::default())
 		.invoke_handler(tauri::generate_handler![
 			workspace_open,
+			workspace_templates,
 			workspace_list,
 			workspace_watch,
 			workspace_watch_stop,
@@ -627,6 +646,7 @@ fn main() {
 			document_resolve_wiki_link,
 			document_open,
 			document_save,
+			document_create_with_content,
 			document_create,
 			document_move,
 			document_delete,

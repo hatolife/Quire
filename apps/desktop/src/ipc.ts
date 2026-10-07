@@ -93,6 +93,7 @@ export type DesktopSettings = {
 	autoSnapshotEnabled: boolean;
 	autoSnapshotDelaySeconds: number;
 	historyRetentionSnapshots: number;
+	templateDirectory: string;
 	lastRightPane: string;
 	lastBrowserUrl?: string | null;
 };
@@ -107,6 +108,10 @@ export type LogEntry = {
 
 export function workspaceOpen(path: string) {
 	return invoke<WorkspaceOpened>("workspace_open", { path });
+}
+
+export function workspaceTemplates(relativeDirectory: string) {
+	return invoke<string[]>("workspace_templates", { relativeDirectory });
 }
 
 export function workspaceList(relativePath: string) {
@@ -159,6 +164,10 @@ export function documentResolveWikiLink(sourceRelativePath: string, target: stri
 
 export function documentOpen(relativePath: string) {
 	return invoke<Document>("document_open", { relativePath });
+}
+
+export function documentCreateWithContent(relativePath: string, content: string) {
+	return invoke<Document>("document_create_with_content", { relativePath, content });
 }
 
 export function documentCreate(relativePath: string) {

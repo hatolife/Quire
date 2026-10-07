@@ -7,12 +7,14 @@ import BrowserPane from "./browser/BrowserPane";
 import GraphPane from "./graph/GraphPane";
 import CommandPalette, { type AppCommand } from "./commands/CommandPalette";
 import QuickOpen from "./commands/QuickOpen";
+import TemplatePicker from "./commands/TemplatePicker";
 import NeovimEditor from "./editor/NeovimEditor";
 import {
 	assetImport,
 	assetRead,
 	documentBacklinks,
 	documentCreate,
+	documentCreateWithContent,
 	documentDelete,
 	documentMove,
 	documentOpen,
@@ -46,6 +48,7 @@ import {
 	workspaceRefreshDocumentIndex,
 	workspaceSearch,
 	workspaceTags,
+	workspaceTemplates,
 	workspaceWatch,
 	workspaceWatchStop,
 	type Backlink,
@@ -852,6 +855,9 @@ function App() {
 	const [autoSnapshotEnabled, setAutoSnapshotEnabled] = createSignal(true);
 	const [autoSnapshotDelaySeconds, setAutoSnapshotDelaySeconds] = createSignal(5);
 	const [historyRetentionSnapshots, setHistoryRetentionSnapshots] = createSignal(200);
+	const [templateDirectory, setTemplateDirectory] = createSignal("Templates");
+	const [templatePickerOpen, setTemplatePickerOpen] = createSignal(false);
+	const [templates, setTemplates] = createSignal<string[]>([]);
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser" | "graph">("preview");
 	const [linkGraph, setLinkGraph] = createSignal<LinkGraph | null>(null);
 	const [browserTargetUrl, setBrowserTargetUrl] = createSignal<string | undefined>();
@@ -1282,6 +1288,7 @@ function App() {
 		autoSnapshotEnabled();
 		autoSnapshotDelaySeconds();
 		historyRetentionSnapshots();
+		templateDirectory();
 		rightPaneMode();
 		browserTargetUrl();
 		scheduleSettingsSave();
@@ -1370,6 +1377,7 @@ function App() {
 		autoSnapshotEnabled: autoSnapshotEnabled(),
 		autoSnapshotDelaySeconds: autoSnapshotDelaySeconds(),
 		historyRetentionSnapshots: historyRetentionSnapshots(),
+		templateDirectory: templateDirectory(),
 		lastRightPane: rightPaneMode(),
 		lastBrowserUrl: browserTargetUrl() ?? null,
 	});
@@ -1402,6 +1410,7 @@ function App() {
 				setAutoSnapshotEnabled(settings.autoSnapshotEnabled);
 				setAutoSnapshotDelaySeconds(Math.max(1, Math.min(300, settings.autoSnapshotDelaySeconds)));
 				setHistoryRetentionSnapshots(Math.max(10, Math.min(10000, settings.historyRetentionSnapshots)));
+				setTemplateDirectory(settings.templateDirectory?.trim() || "Templates");
 				setRightPaneMode(settings.lastRightPane === "browser" ? "browser" : settings.lastRightPane === "graph" ? "graph" : "preview");
 				if(settings.lastBrowserUrl && /^https?:\/\//i.test(settings.lastBrowserUrl)){
 					setBrowserTargetUrl(settings.lastBrowserUrl);
@@ -1835,6 +1844,7 @@ function App() {
 
 	const createDocument = async () => {
 		if(!workspace()){ return; }
+		if(!await prepareToLeaveDocument("未保存の変更があります。保存または破棄して新規Documentを作成しますか？")){ return; }
 		const input = window.prompt("Workspaceからの相対pathを入力してください。", "新規.md");
 		if(input === null){ return; }
 		const relativePath = normalizeMarkdownPath(input);
@@ -1851,6 +1861,58 @@ function App() {
 			updateStatus(created.relativePath + " を作成しました", "info", "document");
 		}catch(error){
 			updateStatus("Document create error: " + String(error), "error", "document");
+		}
+	};
+
+	const templateVariables = (targetPath: string) => {
+		const now = new Date();
+		const pad = (value: number) => String(value).padStart(2, "0");
+		const title = documentTabLabel(targetPath).replace(/\.md(?:own)?$/i, "");
+		return {
+			date: now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()),
+			time: pad(now.getHours()) + ":" + pad(now.getMinutes()),
+			title,
+		};
+	};
+
+	const expandTemplate = (content: string, targetPath: string) => {
+		const variables = templateVariables(targetPath);
+		return content
+			.replace(/\{\{date\}\}/g, variables.date)
+			.replace(/\{\{time\}\}/g, variables.time)
+			.replace(/\{\{title\}\}/g, variables.title);
+	};
+
+	const openTemplatePicker = async () => {
+		if(!workspace()){ return; }
+		try{
+			setTemplates(await workspaceTemplates(templateDirectory().trim() || "Templates"));
+			setTemplatePickerOpen(true);
+			setCommandPaletteOpen(false);
+		}catch(error){
+			updateStatus("Template list error: " + String(error), "error", "template");
+		}
+	};
+
+	const createDocumentFromTemplate = async (templatePath: string) => {
+		if(!await prepareToLeaveDocument("未保存の変更があります。保存または破棄してTemplateからDocumentを作成しますか？")){ return; }
+		const input = window.prompt("作成先をWorkspaceからの相対pathで入力してください。", "新規.md");
+		if(input === null){ return; }
+		const relativePath = normalizeMarkdownPath(input);
+		if(!relativePath){ return; }
+		try{
+			const template = await documentOpen(templatePath);
+			const created = await documentCreateWithContent(relativePath, expandTemplate(template.content, relativePath));
+			await refreshExplorer();
+			setDocument(created);
+			addOpenDocument(created.relativePath);
+			setDraft(contentForEditor(created.content));
+			setExternalConflict(false);
+			setBacklinks([]);
+			invalidateSearchIndex("Template Document create");
+			updateStatus(templatePath + " から " + created.relativePath + " を作成しました", "info", "template");
+		}catch(error){
+			updateStatus("Template create error: " + String(error), "error", "template");
 		}
 	};
 
@@ -2282,6 +2344,13 @@ function App() {
 			run: () => openQuickOpen(),
 		},
 		{
+			id: "document.create.template",
+			title: "Templateから新規Document",
+			keywords: "template new document note",
+			enabled: workspace() !== null,
+			run: () => openTemplatePicker(),
+		},
+		{
 			id: "workspace.search.focus",
 			title: "検索欄へ移動",
 			keywords: "search find full text",
@@ -2609,7 +2678,7 @@ function App() {
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
 								<BrowserPane
-									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
+									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !templatePickerOpen() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
 									navigateTo={browserTargetUrl()}
 									onUrlChange={url => setBrowserTargetUrl(url)}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
@@ -2687,6 +2756,20 @@ function App() {
 								<div class="settings-summary">外部変更Conflictを検出したDocumentは自動保存しません。</div>
 							</section>
 							<section class="settings-section">
+								<h3>Templates</h3>
+								<label class="settings-field">
+									<span>Template directory</span>
+									<input
+										type="text"
+										value={templateDirectory()}
+										onInput={event => setTemplateDirectory(event.currentTarget.value)}
+										placeholder="Templates"
+									/>
+								</label>
+								<div class="settings-summary">通常のMarkdownをTemplateとして使用します。{{date}} / {{time}} / {{title}} を作成時に展開します。</div>
+								<button disabled={!workspace()} onClick={() => void openTemplatePicker()}>Templateを選ぶ</button>
+							</section>
+							<section class="settings-section">
 								<h3>History</h3>
 								<label class="settings-toggle">
 									<input
@@ -2735,6 +2818,14 @@ function App() {
 					</div>
 				</div>
 			</Show>
+
+			<TemplatePicker
+				open={templatePickerOpen()}
+				templates={templates()}
+				directory={templateDirectory().trim() || "Templates"}
+				onChoose={path => createDocumentFromTemplate(path)}
+				onClose={() => setTemplatePickerOpen(false)}
+			/>
 
 			<QuickOpen
 				open={quickOpenVisible()}

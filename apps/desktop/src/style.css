@@ -1559,3 +1559,12 @@ button.primary {
 	min-height: 0;
 	position: relative;
 }
+
+.settings-field input[type="text"] {
+	width: min(260px, 55%);
+	padding: 4px 6px;
+	border: 1px solid #3a3a3a;
+	border-radius: 4px;
+	background: #111;
+	color: #ddd;
+}

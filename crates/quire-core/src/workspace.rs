@@ -131,6 +131,54 @@ impl Workspace {
 		Ok(entries)
 	}
 
+	pub fn markdown_documents_under(&self, relative_directory: &str) -> Result<Vec<String>, WorkspaceError> {
+		let directory = match self.resolve_existing(relative_directory) {
+			Ok(directory) => directory,
+			Err(WorkspaceError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+			Err(error) => return Err(error),
+		};
+		if !directory.is_dir() {
+			return Ok(Vec::new());
+		}
+
+		fn collect(root: &Path, directory: &Path, output: &mut Vec<String>) -> Result<(), WorkspaceError> {
+			for entry in fs::read_dir(directory)? {
+				let entry = entry?;
+				if entry.file_name() == ".git" {
+					continue;
+				}
+				let file_type = entry.file_type()?;
+				if file_type.is_symlink() {
+					continue;
+				}
+				let path = entry.path();
+				if file_type.is_dir() {
+					collect(root, &path, output)?;
+					continue;
+				}
+				if !file_type.is_file() {
+					continue;
+				}
+				let markdown = path.extension()
+					.and_then(|extension| extension.to_str())
+					.is_some_and(|extension| extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown"));
+				if !markdown {
+					continue;
+				}
+				let relative = path
+					.strip_prefix(root)
+					.map_err(|_| WorkspaceError::InvalidRelativePath(path.display().to_string()))?;
+				output.push(portable_path(relative));
+			}
+			Ok(())
+		}
+
+		let mut documents = Vec::new();
+		collect(&self.root, &directory, &mut documents)?;
+		documents.sort_by(|left, right| left.to_lowercase().cmp(&right.to_lowercase()).then_with(|| left.cmp(right)));
+		Ok(documents)
+	}
+
 	pub fn document_path(&self, relative_path: &str) -> Result<PathBuf, WorkspaceError> {
 		let path = self.resolve_existing(relative_path)?;
 		if !path.is_file() {
@@ -393,6 +441,22 @@ mod tests {
 			workspace.list_directory("../"),
 			Err(WorkspaceError::InvalidRelativePath(_))
 		));
+	}
+
+	#[test]
+	fn markdown_documents_under_lists_nested_templates_and_missing_directory_is_empty() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir_all(temp.path().join("Templates").join("nested")).unwrap();
+		fs::write(temp.path().join("Templates").join("Daily.md"), "# Daily").unwrap();
+		fs::write(temp.path().join("Templates").join("nested").join("Meeting.markdown"), "# Meeting").unwrap();
+		fs::write(temp.path().join("Templates").join("ignore.txt"), "x").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+
+		assert_eq!(
+			workspace.markdown_documents_under("Templates").unwrap(),
+			vec!["Templates/Daily.md".to_string(), "Templates/nested/Meeting.markdown".to_string()]
+		);
+		assert!(workspace.markdown_documents_under("Missing").unwrap().is_empty());
 	}
 
 	#[test]
