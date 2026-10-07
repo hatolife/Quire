@@ -834,6 +834,13 @@ function App() {
 					void workspaceTags()
 						.then(setTags)
 						.catch(error => updateStatus("Tag index read error: " + String(error), "error", "index"));
+					void workspaceDocuments()
+						.then(paths => {
+							const existing = new Set(paths);
+							setOpenDocuments(open => open.filter(path => existing.has(path)));
+							if(quickOpenVisible()){ setQuickOpenDocuments(paths); }
+						})
+						.catch(error => updateStatus("Document index read error: " + String(error), "error", "index"));
 					const current = document();
 					if(current){
 						void documentBacklinks(current.relativePath)
