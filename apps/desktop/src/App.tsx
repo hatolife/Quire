@@ -438,6 +438,75 @@ function findFragmentLine(source: string, fragment: string): number | undefined 
 		: findHeadingLine(source, decoded);
 }
 
+function extractBlockReference(source: string, fragment: string): string | undefined {
+	const decoded = decodeHeadingFragment(fragment).trim();
+	const lineNumber = findBlockReferenceLine(source, decoded);
+	if(lineNumber === undefined){ return undefined; }
+	const lines = source.split("\n");
+	const index = lineNumber - 1;
+	const blockId = decoded.startsWith("^") ? decoded.slice(1) : decoded;
+	const escaped = blockId.replace(/[.*+?^{}()|[\]\\]/g, "\\function linkFragment(value: string): string | undefined {");
+	const marker = new RegExp("\\s*\\^" + escaped + "\\s*$");
+	let start = index;
+	const currentWithoutMarker = lines[index].replace(marker, "");
+	if(currentWithoutMarker.trim() === ""){
+		start = Math.max(0, index - 1);
+	}else{
+		lines[index] = currentWithoutMarker;
+	}
+	while(start > 0){
+		const previous = lines[start - 1];
+		if(!previous.trim()){ break; }
+		if(/^[ \t]{0,3}#{1,6}[ \t]+/.test(previous)){ break; }
+		if(previous.trimStart().startsWith(String.fromCharCode(96, 96, 96)) || previous.trimStart().startsWith("~~~")){ break; }
+		start -= 1;
+	}
+	const end = currentWithoutMarker.trim() === "" ? index : index + 1;
+	const selected = lines.slice(start, end);
+	if(selected.length > 0){
+		const last = selected.length - 1;
+		selected[last] = selected[last].replace(marker, "");
+	}
+	return selected.join("\n").trimEnd();
+}
+
+function headingLevelAt(lines: string[], index: number): number | undefined {
+	const atx = lines[index]?.match(/^[ \t]{0,3}(#{1,6})[ \t]+/);
+	if(atx){ return atx[1].length; }
+	if(index + 1 < lines.length && lines[index].trim()){
+		const underline = lines[index + 1];
+		if(/^[ \t]{0,3}=+[ \t]*$/.test(underline)){ return 1; }
+		if(/^[ \t]{0,3}-+[ \t]*$/.test(underline)){ return 2; }
+	}
+	return undefined;
+}
+
+function extractHeadingSection(source: string, fragment: string): string | undefined {
+	const lineNumber = findHeadingLine(source, fragment);
+	if(lineNumber === undefined){ return undefined; }
+	const lines = source.split("\n");
+	const start = lineNumber - 1;
+	const level = headingLevelAt(lines, start);
+	if(level === undefined){ return undefined; }
+	let end = lines.length;
+	for(let index = start + 1; index < lines.length; ++index){
+		const candidate = headingLevelAt(lines, index);
+		if(candidate !== undefined && candidate <= level){
+			end = index;
+			break;
+		}
+	}
+	return lines.slice(start, end).join("\n").trimEnd();
+}
+
+function extractEmbeddedFragment(source: string, fragment: string): string | undefined {
+	const decoded = decodeHeadingFragment(fragment).trim();
+	if(!decoded){ return source; }
+	return decoded.startsWith("^")
+		? extractBlockReference(source, decoded)
+		: extractHeadingSection(source, decoded);
+}
+
 function linkFragment(value: string): string | undefined {
 	const index = value.indexOf("#");
 	if(index < 0 || index + 1 >= value.length){ return undefined; }
@@ -563,9 +632,17 @@ function App() {
 				}
 				const embedded = await documentOpen(resolved);
 				if(generation !== previewResolveGeneration){ return; }
+				const source = contentForEditor(embedded.content);
+				const fragment = linkFragment(rawTarget);
+				const renderedSource = fragment ? extractEmbeddedFragment(source, fragment) : source;
+				if(fragment && renderedSource === undefined){
+					element.innerHTML = '<div class="wiki-document-embed-error">embed対象が見つかりません: '
+						+ escapePreviewHtml(rawTarget) + "</div>";
+					return;
+				}
 				element.dataset.quireEmbeddedDocument = resolved;
 				element.removeAttribute("data-quire-wiki-embed-target");
-				element.innerHTML = renderPreview(contentForEditor(embedded.content), resolved, false);
+				element.innerHTML = renderPreview(renderedSource ?? source, resolved, false);
 			}catch(error){
 				if(generation !== previewResolveGeneration){ return; }
 				element.innerHTML = '<div class="wiki-document-embed-error">embed読込失敗: '
