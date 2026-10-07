@@ -5,7 +5,7 @@ mod settings;
 mod watcher;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use quire_core::{AssetImport, Backlink, Document, DocumentMove, HistoryStore, SearchHit, SearchIndex, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
+use quire_core::{AssetImport, Backlink, Document, DocumentMove, HistoryStore, LinkIndex, SearchHit, SearchIndex, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
 use serde::Serialize;
 use std::path::Path;
 use tauri::ipc::Channel;
@@ -18,6 +18,7 @@ use std::sync::{
 struct AppState {
 	workspace: Mutex<Option<Workspace>>,
 	search_index: Mutex<Option<SearchIndex>>,
+	link_index: Mutex<Option<LinkIndex>>,
 	search_generation: AtomicU64,
 	history_lock: Mutex<()>,
 }
@@ -38,6 +39,10 @@ fn workspace_open(path: String, state: tauri::State<'_, AppState>) -> Result<Wor
 	state.search_generation.fetch_add(1, Ordering::SeqCst);
 	{
 		let mut index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+		*index = None;
+	}
+	{
+		let mut index = state.link_index.lock().map_err(|_| "Link index state lock failed.".to_string())?;
 		*index = None;
 	}
 	{
@@ -79,23 +84,27 @@ fn workspace_reindex(state: tauri::State<'_, AppState>) -> Result<Option<usize>,
 	let generation = state.search_generation.load(Ordering::SeqCst);
 	let root = with_workspace(&state, |workspace| Ok(std::path::PathBuf::from(workspace.info().root)))?;
 	let workspace = Workspace::open(root).map_err(|error| error.to_string())?;
-	let rebuilt = workspace.build_search_index().map_err(|error| error.to_string())?;
-	let count = rebuilt.document_count();
+	let rebuilt_search = workspace.build_search_index().map_err(|error| error.to_string())?;
+	let rebuilt_links = workspace.build_link_index().map_err(|error| error.to_string())?;
+	let count = rebuilt_search.document_count();
 
 	if state.search_generation.load(Ordering::SeqCst) != generation {
 		return Ok(None);
 	}
-	let mut index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+	let mut search_index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+	let mut link_index = state.link_index.lock().map_err(|_| "Link index state lock failed.".to_string())?;
 	if state.search_generation.load(Ordering::SeqCst) != generation {
 		return Ok(None);
 	}
-	*index = Some(rebuilt);
+	*search_index = Some(rebuilt_search);
+	*link_index = Some(rebuilt_links);
 	Ok(Some(count))
 }
 
 #[tauri::command]
 fn document_backlinks(relative_path: String, state: tauri::State<'_, AppState>) -> Result<Vec<Backlink>, String> {
-	with_workspace(&state, |workspace| workspace.backlinks(&relative_path).map_err(|error| error.to_string()))
+	let index = state.link_index.lock().map_err(|_| "Link index state lock failed.".to_string())?;
+	Ok(index.as_ref().map(|index| index.backlinks(&relative_path)).unwrap_or_default())
 }
 
 #[tauri::command]
@@ -115,6 +124,18 @@ fn document_resolve_wiki_link(
 	target: String,
 	state: tauri::State<'_, AppState>,
 ) -> Result<Option<String>, String> {
+	let normalized = target
+		.split('#')
+		.next()
+		.unwrap_or("")
+		.trim()
+		.replace('\\', "/");
+	if !normalized.is_empty() && !normalized.contains('/') && !normalized.starts_with('.') {
+		let index = state.link_index.lock().map_err(|_| "Link index state lock failed.".to_string())?;
+		if let Some(index) = index.as_ref() {
+			return Ok(index.resolve_bare_wiki_target(&target));
+		}
+	}
 	with_workspace(&state, |workspace| {
 		workspace.resolve_wiki_target(&source_relative_path, &target).map_err(|error| error.to_string())
 	})
@@ -446,6 +467,7 @@ fn main() {
 		.manage(AppState {
 			workspace: Mutex::new(None),
 			search_index: Mutex::new(None),
+			link_index: Mutex::new(None),
 			search_generation: AtomicU64::new(0),
 			history_lock: Mutex::new(()),
 		})

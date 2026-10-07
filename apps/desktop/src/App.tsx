@@ -260,7 +260,13 @@ function App() {
 				const count = await workspaceReindex();
 				if(count !== null){
 					setSearchIndexReady(true);
-					void appendLog("info", "index", "Search index rebuilt: " + count + " documents / " + reason);
+					const current = document();
+					if(current){
+						void documentBacklinks(current.relativePath)
+							.then(setBacklinks)
+							.catch(error => updateStatus("Backlink index read error: " + String(error), "error", "links"));
+					}
+					void appendLog("info", "index", "Search/link indexes rebuilt: " + count + " documents / " + reason);
 				}
 			}while(searchReindexPending && workspace());
 		}catch(error){

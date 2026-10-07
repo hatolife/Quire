@@ -1,5 +1,6 @@
 use crate::{Workspace, WorkspaceError};
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -26,7 +27,113 @@ pub struct DocumentMove {
 	pub updated_links: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct LinkIndex {
+	wiki_by_stem: HashMap<String, String>,
+	backlinks: HashMap<String, Vec<Backlink>>,
+	document_count: usize,
+}
+
+impl LinkIndex {
+	pub fn build(workspace: &Workspace) -> Result<Self, WorkspaceError> {
+		let mut files = Vec::new();
+		collect_markdown_files(&workspace.root, &mut files)?;
+		files.sort();
+
+		let mut documents = Vec::with_capacity(files.len());
+		let mut wiki_by_stem = HashMap::new();
+		for file in files {
+			let relative = portable_path(
+				file.strip_prefix(&workspace.root)
+					.map_err(|_| WorkspaceError::InvalidRelativePath(file.display().to_string()))?,
+			);
+			let stem = file
+				.file_stem()
+				.and_then(|value| value.to_str())
+				.unwrap_or("")
+				.to_lowercase();
+			if !stem.is_empty() {
+				wiki_by_stem.entry(stem).or_insert_with(|| relative.clone());
+			}
+			documents.push((relative, file));
+		}
+
+		let mut backlinks: HashMap<String, Vec<Backlink>> = HashMap::new();
+		for (source_relative, source) in &documents {
+			let content = match fs::read_to_string(source) {
+				Ok(content) => content,
+				Err(error) if error.kind() == std::io::ErrorKind::InvalidData => continue,
+				Err(error) => return Err(WorkspaceError::Io(error)),
+			};
+			let mut in_fence = false;
+			for (line_index, line) in content.lines().enumerate() {
+				if is_fence(line) {
+					in_fence = !in_fence;
+					continue;
+				}
+				if in_fence {
+					continue;
+				}
+
+				let mut targets = HashSet::new();
+				for (raw_target, _) in extract_links(line) {
+					if let Some(target) = resolve_indexed_wiki_target(workspace, source_relative, &raw_target, &wiki_by_stem) {
+						targets.insert(target);
+					}
+				}
+				for raw_target in extract_markdown_targets(line) {
+					if let Some(target) = workspace.resolve_markdown_target(source_relative, raw_target).ok().flatten() {
+						targets.insert(target);
+					}
+				}
+
+				for target in targets {
+					if target == *source_relative {
+						continue;
+					}
+					backlinks.entry(target).or_default().push(Backlink {
+						source_path: source_relative.clone(),
+						line: line_index + 1,
+						preview: compact_preview(line, 180),
+					});
+				}
+			}
+		}
+
+		Ok(Self {
+			document_count: documents.len(),
+			wiki_by_stem,
+			backlinks,
+		})
+	}
+
+	pub fn document_count(&self) -> usize {
+		self.document_count
+	}
+
+	pub fn backlinks(&self, target_relative_path: &str) -> Vec<Backlink> {
+		self.backlinks.get(target_relative_path).cloned().unwrap_or_default()
+	}
+
+	pub fn resolve_bare_wiki_target(&self, raw_target: &str) -> Option<String> {
+		let target = wiki_target_without_heading(raw_target)?;
+		if target.contains('/') || target.starts_with('.') {
+			return None;
+		}
+		let wanted = Path::new(&target)
+			.file_stem()
+			.and_then(|stem| stem.to_str())
+			.unwrap_or(&target)
+			.to_lowercase();
+		self.wiki_by_stem.get(&wanted).cloned()
+	}
+}
+
 impl Workspace {
+	pub fn build_link_index(&self) -> Result<LinkIndex, WorkspaceError> {
+		LinkIndex::build(self)
+	}
+
 	pub fn wiki_links(&self, source_relative_path: &str) -> Result<Vec<WikiLink>, WorkspaceError> {
 		let document = self.read_document(source_relative_path)?;
 		let mut links = Vec::new();
@@ -351,6 +458,34 @@ struct LinkRewritePlan {
 	updated_content: String,
 }
 
+fn wiki_target_without_heading(raw_target: &str) -> Option<String> {
+	let target = raw_target
+		.split('#')
+		.next()
+		.unwrap_or("")
+		.trim()
+		.replace('\\', "/");
+	(!target.is_empty()).then_some(target)
+}
+
+fn resolve_indexed_wiki_target(
+	workspace: &Workspace,
+	source_relative_path: &str,
+	raw_target: &str,
+	wiki_by_stem: &HashMap<String, String>,
+) -> Option<String> {
+	let target = wiki_target_without_heading(raw_target)?;
+	if target.contains('/') || target.starts_with('.') {
+		return workspace.resolve_wiki_target(source_relative_path, raw_target).ok().flatten();
+	}
+	let wanted = Path::new(&target)
+		.file_stem()
+		.and_then(|stem| stem.to_str())
+		.unwrap_or(&target)
+		.to_lowercase();
+	wiki_by_stem.get(&wanted).cloned()
+}
+
 fn wiki_target_for_path(relative_path: &str) -> String {
 	let path = Path::new(relative_path);
 	let without_extension = path.with_extension("");
@@ -654,6 +789,41 @@ fn portable_path(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn link_index_resolves_bare_wiki_links_and_backlinks() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir_all(temp.path().join("notes")).unwrap();
+		fs::write(temp.path().join("notes").join("Target.md"), "# Target").unwrap();
+		fs::write(
+			temp.path().join("Source.md"),
+			"[[Target]] and [target](notes/Target.md)\n~~~md\n[[Target]]\n~~~\n",
+		).unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+
+		let index = workspace.build_link_index().unwrap();
+
+		assert_eq!(index.document_count(), 2);
+		assert_eq!(index.resolve_bare_wiki_target("Target#Heading").as_deref(), Some("notes/Target.md"));
+		let backlinks = index.backlinks("notes/Target.md");
+		assert_eq!(backlinks.len(), 1);
+		assert_eq!(backlinks[0].source_path, "Source.md");
+		assert_eq!(backlinks[0].line, 1);
+	}
+
+	#[test]
+	fn link_index_uses_first_sorted_path_for_duplicate_stems() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir_all(temp.path().join("a")).unwrap();
+		fs::create_dir_all(temp.path().join("z")).unwrap();
+		fs::write(temp.path().join("a").join("Same.md"), "a").unwrap();
+		fs::write(temp.path().join("z").join("Same.md"), "z").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+
+		let index = workspace.build_link_index().unwrap();
+
+		assert_eq!(index.resolve_bare_wiki_target("Same").as_deref(), Some("a/Same.md"));
+	}
 
 	#[test]
 	fn markdown_target_resolves_relative_document_and_rejects_escape() {

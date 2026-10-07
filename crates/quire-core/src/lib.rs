@@ -4,7 +4,7 @@ mod search;
 mod workspace;
 
 pub use history::{HistoryError, HistoryStore, Snapshot};
-pub use links::{Backlink, DocumentMove, WikiLink};
+pub use links::{Backlink, DocumentMove, LinkIndex, WikiLink};
 pub use search::{SearchHit, SearchIndex, SearchKind};
 pub use workspace::{
 	AssetImport,
