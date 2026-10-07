@@ -1512,6 +1512,11 @@ function App() {
 				void chooseWorkspace();
 				return;
 			}
+			if(event.shiftKey && key === "n"){
+				event.preventDefault();
+				if(workspace()){ void openTemplatePicker(); }
+				return;
+			}
 			if(!event.shiftKey && key === "n"){
 				event.preventDefault();
 				if(workspace()){ void createDocument(); }
@@ -2370,6 +2375,7 @@ function App() {
 			id: "document.create.template",
 			title: "Templateから新規Document",
 			keywords: "template new document note",
+			shortcut: "Ctrl+Shift+N",
 			enabled: workspace() !== null,
 			run: () => openTemplatePicker(),
 		},
@@ -2491,6 +2497,7 @@ function App() {
 							<button class="explorer-mode" classList={{ active: explorerMode() === "outline" }} onClick={() => setExplorerMode("outline")}>Outline</button>
 							<span class="toolbar-spacer" />
 							<button class="pane-action" title="新規Markdown" onClick={() => void createDocument()}>＋</button>
+							<button class="pane-action" title="Templateから新規" onClick={() => void openTemplatePicker()}>T＋</button>
 							<button class="pane-action" title="再読込" onClick={() => void refreshExplorer()}>↻</button>
 						</div>
 						<div class="explorer-search-row">
