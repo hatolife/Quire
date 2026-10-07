@@ -82,6 +82,16 @@ export type RecoveryDraft = {
 	content: string;
 };
 
+export type LayoutPreset = {
+	name: string;
+	explorerWidth: number;
+	editorRatio: number;
+	explorerVisible: boolean;
+	rightPaneVisible: boolean;
+	explorerMode: string;
+	rightPaneMode: string;
+};
+
 export type DesktopSettings = {
 	explorerWidth: number;
 	editorRatio: number;
@@ -96,6 +106,7 @@ export type DesktopSettings = {
 	autoSnapshotDelaySeconds: number;
 	historyRetentionSnapshots: number;
 	templateDirectory: string;
+	layoutPresets: LayoutPreset[];
 	lastRightPane: string;
 	lastBrowserUrl?: string | null;
 };

@@ -54,6 +54,7 @@ import {
 	type Backlink,
 	type DesktopSettings,
 	type Document,
+	type LayoutPreset,
 	type LinkGraph,
 	type LogEntry,
 	type RecoveryDraft,
@@ -860,6 +861,7 @@ function App() {
 	const [autoSnapshotDelaySeconds, setAutoSnapshotDelaySeconds] = createSignal(5);
 	const [historyRetentionSnapshots, setHistoryRetentionSnapshots] = createSignal(200);
 	const [templateDirectory, setTemplateDirectory] = createSignal("Templates");
+	const [layoutPresets, setLayoutPresets] = createSignal<LayoutPreset[]>([]);
 	const [templatePickerOpen, setTemplatePickerOpen] = createSignal(false);
 	const [templates, setTemplates] = createSignal<string[]>([]);
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser" | "graph">("preview");
@@ -1183,6 +1185,49 @@ function App() {
 		setFocusMode(true);
 	};
 
+	const captureLayoutPreset = (name: string): LayoutPreset => ({
+		name,
+		explorerWidth: explorerWidth(),
+		editorRatio: editorRatio(),
+		explorerVisible: explorerVisible(),
+		rightPaneVisible: rightPaneVisible(),
+		explorerMode: explorerMode(),
+		rightPaneMode: rightPaneMode(),
+	});
+
+	const saveLayoutPreset = () => {
+		const input = window.prompt("layout名を入力してください。", "作業");
+		if(input === null){ return; }
+		const name = input.trim();
+		if(!name){ return; }
+		const preset = captureLayoutPreset(name);
+		setLayoutPresets(current => {
+			const index = current.findIndex(value => value.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+			if(index < 0){ return [...current, preset]; }
+			const next = [...current];
+			next[index] = preset;
+			return next;
+		});
+		updateStatus("layoutを保存しました: " + name, "info", "layout");
+	};
+
+	const applyLayoutPreset = (preset: LayoutPreset) => {
+		focusModeRestore = undefined;
+		setFocusMode(false);
+		setExplorerWidth(Math.max(180, Math.min(420, preset.explorerWidth)));
+		setEditorRatio(Math.max(0.25, Math.min(0.75, preset.editorRatio)));
+		setExplorerVisible(preset.explorerVisible);
+		setRightPaneVisible(preset.rightPaneVisible);
+		setExplorerMode(preset.explorerMode === "tags" ? "tags" : preset.explorerMode === "outline" ? "outline" : "files");
+		setRightPaneMode(preset.rightPaneMode === "browser" ? "browser" : preset.rightPaneMode === "graph" ? "graph" : "preview");
+		updateStatus("layoutを復元しました: " + preset.name, "info", "layout");
+	};
+
+	const deleteLayoutPreset = (name: string) => {
+		setLayoutPresets(current => current.filter(value => value.name !== name));
+		updateStatus("layoutを削除しました: " + name, "info", "layout");
+	};
+
 	const resetPaneLayout = () => {
 		setExplorerWidth(260);
 		setEditorRatio(0.5);
@@ -1317,6 +1362,7 @@ function App() {
 		autoSnapshotDelaySeconds();
 		historyRetentionSnapshots();
 		templateDirectory();
+		layoutPresets();
 		rightPaneMode();
 		browserTargetUrl();
 		scheduleSettingsSave();
@@ -1408,6 +1454,7 @@ function App() {
 		autoSnapshotDelaySeconds: autoSnapshotDelaySeconds(),
 		historyRetentionSnapshots: historyRetentionSnapshots(),
 		templateDirectory: templateDirectory(),
+		layoutPresets: layoutPresets(),
 		lastRightPane: rightPaneMode(),
 		lastBrowserUrl: browserTargetUrl() ?? null,
 	});
@@ -1443,6 +1490,7 @@ function App() {
 				setAutoSnapshotDelaySeconds(Math.max(1, Math.min(300, settings.autoSnapshotDelaySeconds)));
 				setHistoryRetentionSnapshots(Math.max(10, Math.min(10000, settings.historyRetentionSnapshots)));
 				setTemplateDirectory(settings.templateDirectory?.trim() || "Templates");
+				setLayoutPresets(settings.layoutPresets ?? []);
 				setRightPaneMode(settings.lastRightPane === "browser" ? "browser" : settings.lastRightPane === "graph" ? "graph" : "preview");
 				if(settings.lastBrowserUrl && /^https?:\/\//i.test(settings.lastBrowserUrl)){
 					setBrowserTargetUrl(settings.lastBrowserUrl);
@@ -2435,6 +2483,18 @@ function App() {
 			},
 		},
 		{
+			id: "layout.preset.save",
+			title: "現在のlayoutを保存",
+			keywords: "layout workspace preset save",
+			run: () => saveLayoutPreset(),
+		},
+		...layoutPresets().map(preset => ({
+			id: "layout.preset." + preset.name,
+			title: "layoutを復元: " + preset.name,
+			keywords: "layout workspace preset restore",
+			run: () => applyLayoutPreset(preset),
+		} as AppCommand)),
+		{
 			id: "layout.focus.toggle",
 			title: focusMode() ? "Focus Modeを終了" : "Focus Mode",
 			keywords: "layout focus distraction free editor",
@@ -2892,8 +2952,32 @@ function App() {
 							</section>
 							<section class="settings-section">
 								<h3>Layout</h3>
+								<label class="settings-toggle">
+									<input type="checkbox" checked={explorerVisible()} onChange={event => setExplorerVisible(event.currentTarget.checked)} />
+									<span>Explorerを表示</span>
+								</label>
+								<label class="settings-toggle">
+									<input type="checkbox" checked={rightPaneVisible()} onChange={event => setRightPaneVisible(event.currentTarget.checked)} />
+									<span>右paneを表示</span>
+								</label>
 								<div class="settings-summary">Explorer {Math.round(explorerWidth())}px / Editor {Math.round(editorRatio() * 100)}%</div>
-								<button onClick={resetPaneLayout}>pane layoutを初期値へ戻す</button>
+								<div class="layout-preset-actions">
+									<button onClick={saveLayoutPreset}>現在のlayoutを保存</button>
+									<button onClick={resetPaneLayout}>pane layoutを初期値へ戻す</button>
+								</div>
+								<Show when={layoutPresets().length > 0}>
+									<div class="layout-preset-list">
+										<For each={layoutPresets()}>
+											{preset => (
+												<div class="layout-preset-entry">
+													<span>{preset.name}</span>
+													<button onClick={() => applyLayoutPreset(preset)}>復元</button>
+													<button class="danger" onClick={() => deleteLayoutPreset(preset.name)}>削除</button>
+												</div>
+											)}
+										</For>
+									</div>
+								</Show>
 							</section>
 						</div>
 					</div>

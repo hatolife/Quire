@@ -1574,3 +1574,35 @@ button.primary {
 .pane-splitter.hidden {
 	display: none;
 }
+
+.layout-preset-actions {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.layout-preset-list {
+	display: grid;
+	gap: 4px;
+}
+
+.layout-preset-entry {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	gap: 4px;
+	align-items: center;
+	padding: 5px 6px;
+	border: 1px solid #303030;
+	border-radius: 4px;
+	background: #171717;
+}
+
+.layout-preset-entry > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.layout-preset-entry button.danger:hover {
+	background: #4a2424;
+}

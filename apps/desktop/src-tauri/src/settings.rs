@@ -4,6 +4,18 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutPreset {
+	pub name: String,
+	pub explorer_width: f64,
+	pub editor_ratio: f64,
+	pub explorer_visible: bool,
+	pub right_pane_visible: bool,
+	pub explorer_mode: String,
+	pub right_pane_mode: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DesktopSettings {
 	pub explorer_width: f64,
@@ -19,6 +31,7 @@ pub struct DesktopSettings {
 	pub auto_snapshot_delay_seconds: u64,
 	pub history_retention_snapshots: usize,
 	pub template_directory: String,
+	pub layout_presets: Vec<LayoutPreset>,
 	pub last_right_pane: String,
 	pub last_browser_url: Option<String>,
 }
@@ -39,6 +52,7 @@ impl Default for DesktopSettings {
 			auto_snapshot_delay_seconds: 5,
 			history_retention_snapshots: 200,
 			template_directory: "Templates".to_string(),
+			layout_presets: Vec::new(),
 			last_right_pane: "preview".to_string(),
 			last_browser_url: None,
 		}
