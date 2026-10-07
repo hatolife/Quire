@@ -38,6 +38,13 @@ jobs:
       - name: Test quire-core
         run: cargo test -p quire-core
 
+      - name: Bootstrap Cargo.lock
+        shell: bash
+        run: |
+          echo "QUIRE_CARGO_LOCK_BEGIN"
+          base64 Cargo.lock
+          echo "QUIRE_CARGO_LOCK_END"
+
   desktop-build:
     name: Quire desktop build
     runs-on: windows-latest
@@ -60,6 +67,17 @@ jobs:
       - name: Install desktop frontend dependencies
         working-directory: apps/desktop
         run: npm install --no-audit --no-fund
+
+      - name: Bootstrap package-lock.json
+        shell: powershell
+        run: |
+          Write-Output "QUIRE_NPM_LOCK_BEGIN"
+          $value = [Convert]::ToBase64String([IO.File]::ReadAllBytes("apps/desktop/package-lock.json"))
+          for ($index = 0; $index -lt $value.Length; $index += 60000) {
+            $length = [Math]::Min(60000, $value.Length - $index)
+            Write-Output $value.Substring($index, $length)
+          }
+          Write-Output "QUIRE_NPM_LOCK_END"
 
       - name: Build Quire desktop executable
         working-directory: apps/desktop
