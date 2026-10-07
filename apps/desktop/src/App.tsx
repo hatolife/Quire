@@ -159,6 +159,7 @@ function App() {
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
 	const [recoveryDraft, setRecoveryDraft] = createSignal<RecoveryDraft | null>(null);
+	const [recoveryTrackingReady, setRecoveryTrackingReady] = createSignal(false);
 	const preview = createMemo(() => renderPreview(draft()));
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
@@ -356,11 +357,12 @@ function App() {
 	});
 
 	createEffect(() => {
+		const trackingReady = recoveryTrackingReady();
 		const current = document();
 		const currentDraft = draft();
 		const isDirty = dirty();
 		if(recoveryTimer !== undefined){ window.clearTimeout(recoveryTimer); }
-		if(!current || !workspace()){
+		if(!trackingReady || !current || !workspace()){
 			return;
 		}
 		if(!isDirty){
@@ -469,9 +471,11 @@ function App() {
 						updateStatus("Last Workspace could not be restored: " + String(error), "warn", "session");
 					}
 				}
+				setRecoveryTrackingReady(true);
 				setSettingsReady(true);
 			})
 			.catch(error => {
+				setRecoveryTrackingReady(true);
 				setSettingsReady(true);
 				updateStatus("Settings load error: " + String(error), "error", "settings");
 			});
@@ -509,7 +513,7 @@ function App() {
 
 		void getCurrentWindow().onCloseRequested(event => {
 			if(!dirty()){ return; }
-			if(!window.confirm("未保存の変更があります。破棄してQuireを終了しますか？")){
+			if(!window.confirm("未保存の変更があります。終了しますか？未保存bufferは次回起動時の復元候補として保持されます。")){
 				event.preventDefault();
 			}
 		}).then(unlisten => {
@@ -631,12 +635,17 @@ function App() {
 
 	const chooseWorkspace = async () => {
 		if(dirty() && !window.confirm("未保存の変更があります。破棄して別のWorkspaceを開きますか？")){ return; }
+		if(dirty()){
+			try{ await recoveryClear(); }catch(error){ updateStatus("Recovery clear error: " + String(error), "error", "recovery"); }
+		}
 		const selected = await open({
 			directory: true,
 			multiple: false,
 			title: "Quire Workspaceを開く",
 		});
 		if(typeof selected !== "string"){ return; }
+		setRecoveryTrackingReady(false);
+		if(recoveryTimer !== undefined){ window.clearTimeout(recoveryTimer); recoveryTimer = undefined; }
 		try{
 			const opened = await workspaceOpen(selected);
 			setWorkspace(opened.info);
@@ -646,9 +655,33 @@ function App() {
 			void startWorkspaceWatcher();
 			setDocument(null);
 			setDraft("");
+			setRecoveryDraft(null);
+			try{
+				const recovery = await recoveryLoad();
+				if(recovery){
+					try{
+						const recoveredDocument = await documentOpen(recovery.relativePath);
+						setDocument(recoveredDocument);
+						setDraft(contentForEditor(recoveredDocument.content));
+						setInitialEditorLine(undefined);
+						void refreshBacklinks(recoveredDocument.relativePath);
+						if(recovery.content !== contentForEditor(recoveredDocument.content)){
+							setRecoveryDraft(recovery);
+						}else{
+							await recoveryClear();
+						}
+					}catch(error){
+						updateStatus("Recovery Document could not be opened: " + String(error), "warn", "recovery");
+					}
+				}
+			}catch(error){
+				updateStatus("Recovery load error: " + String(error), "error", "recovery");
+			}
 			updateStatus(opened.info.name + " を開きました", "info", "workspace");
 		}catch(error){
 			updateStatus("Workspace open error: " + String(error), "error", "workspace");
+		}finally{
+			setRecoveryTrackingReady(true);
 		}
 	};
 

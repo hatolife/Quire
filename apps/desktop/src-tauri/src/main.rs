@@ -15,6 +15,7 @@ use std::sync::Mutex;
 struct AppState {
 	workspace: Mutex<Option<Workspace>>,
 	search_index: Mutex<Option<SearchIndex>>,
+	history_lock: Mutex<()>,
 }
 
 #[derive(Serialize)]
@@ -347,6 +348,7 @@ fn history_create_snapshot(
 	app: tauri::AppHandle,
 	state: tauri::State<'_, AppState>,
 ) -> Result<Snapshot, String> {
+	let _guard = state.history_lock.lock().map_err(|_| "History lock failed.".to_string())?;
 	let store = history_store(&app, &state)?;
 	store.create_snapshot(&message).map_err(|error| error.to_string())
 }
@@ -357,6 +359,7 @@ fn history_list(
 	app: tauri::AppHandle,
 	state: tauri::State<'_, AppState>,
 ) -> Result<Vec<Snapshot>, String> {
+	let _guard = state.history_lock.lock().map_err(|_| "History lock failed.".to_string())?;
 	let store = history_store(&app, &state)?;
 	store.list_snapshots(limit).map_err(|error| error.to_string())
 }
@@ -368,6 +371,7 @@ fn history_read_file(
 	app: tauri::AppHandle,
 	state: tauri::State<'_, AppState>,
 ) -> Result<Option<String>, String> {
+	let _guard = state.history_lock.lock().map_err(|_| "History lock failed.".to_string())?;
 	let store = history_store(&app, &state)?;
 	store.read_file_text(&snapshot_id, &relative_path).map_err(|error| error.to_string())
 }
@@ -382,6 +386,7 @@ fn history_restore_file(
 	editor_state: tauri::State<'_, editor::EditorState>,
 ) -> Result<Document, String> {
 	editor::stop(&editor_state)?;
+	let _guard = state.history_lock.lock().map_err(|_| "History lock failed.".to_string())?;
 	let store = history_store(&app, &state)?;
 	store
 		.restore_file(&snapshot_id, &relative_path, expected_revision.as_deref())
@@ -413,6 +418,7 @@ fn main() {
 		.manage(AppState {
 			workspace: Mutex::new(None),
 			search_index: Mutex::new(None),
+			history_lock: Mutex::new(()),
 		})
 		.manage(editor::EditorState::default())
 		.manage(logging::LogState::default())
