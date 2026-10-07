@@ -195,16 +195,167 @@ function splitFrontMatter(source: string): { body: string; lineOffset: number; f
 	return { body: normalized, lineOffset: 0 };
 }
 
+type FrontMatterProperty = {
+	key: string;
+	values: string[];
+};
+
+function unquoteFrontMatterValue(value: string): string {
+	const trimmed = value.trim();
+	if(trimmed.length >= 2){
+		const first = trimmed[0];
+		const last = trimmed[trimmed.length - 1];
+		if((first === '"' && last === '"') || (first === "'" && last === "'")){
+			return trimmed.slice(1, -1);
+		}
+	}
+	return trimmed;
+}
+
+function splitInlineFrontMatterList(value: string): string[] | null {
+	const trimmed = value.trim();
+	if(!trimmed.startsWith("[") || !trimmed.endsWith("]")){ return null; }
+	const body = trimmed.slice(1, -1);
+	const values: string[] = [];
+	let current = "";
+	let quote = "";
+	let escaped = false;
+	for(const ch of body){
+		if(escaped){
+			current += ch;
+			escaped = false;
+			continue;
+		}
+		if(ch === "\\"){
+			current += ch;
+			escaped = true;
+			continue;
+		}
+		if(quote){
+			current += ch;
+			if(ch === quote){ quote = ""; }
+			continue;
+		}
+		if(ch === '"' || ch === "'"){
+			quote = ch;
+			current += ch;
+			continue;
+		}
+		if(ch === ","){
+			const item = unquoteFrontMatterValue(current);
+			if(item){ values.push(item); }
+			current = "";
+			continue;
+		}
+		current += ch;
+	}
+	if(quote){ return null; }
+	const item = unquoteFrontMatterValue(current);
+	if(item){ values.push(item); }
+	return values;
+}
+
+function parseFrontMatterProperties(frontMatter: string): { properties: FrontMatterProperty[]; complete: boolean } {
+	const lines = frontMatter.split("\n");
+	const properties: FrontMatterProperty[] = [];
+	let complete = true;
+
+	for(let index = 0; index < lines.length; ++index){
+		const line = lines[index];
+		const trimmed = line.trim();
+		if(!trimmed || trimmed.startsWith("#")){ continue; }
+		if(/^\s/.test(line)){
+			complete = false;
+			continue;
+		}
+
+		const match = line.match(/^([^:#][^:]*):(?:[ \t]*(.*))?$/);
+		if(!match){
+			complete = false;
+			continue;
+		}
+		const key = match[1].trim();
+		const rawValue = (match[2] ?? "").trim();
+		if(!key){
+			complete = false;
+			continue;
+		}
+
+		if(rawValue){
+			const inline = splitInlineFrontMatterList(rawValue);
+			properties.push({
+				key,
+				values: inline ?? [unquoteFrontMatterValue(rawValue)],
+			});
+			continue;
+		}
+
+		const values: string[] = [];
+		let cursor = index + 1;
+		while(cursor < lines.length){
+			const nested = lines[cursor];
+			if(!/^\s/.test(nested)){ break; }
+			const item = nested.trim();
+			if(!item){
+				++cursor;
+				continue;
+			}
+			const listMatch = item.match(/^-\s+(.+)$/);
+			if(!listMatch){
+				complete = false;
+				break;
+			}
+			values.push(unquoteFrontMatterValue(listMatch[1]));
+			++cursor;
+		}
+		if(cursor > index + 1){
+			index = cursor - 1;
+			properties.push({ key, values });
+		}else{
+			properties.push({ key, values: [] });
+		}
+	}
+	return { properties, complete };
+}
+
+function renderFrontMatterValue(key: string, value: string): string {
+	const escaped = escapePreviewHtml(value);
+	const normalizedKey = key.toLowerCase();
+	if(normalizedKey === "tags" || normalizedKey === "tag"){
+		const tag = value.replace(/^#/, "");
+		return '<span class="property-chip property-tag">#' + escapePreviewHtml(tag) + '</span>';
+	}
+	if(normalizedKey === "aliases" || normalizedKey === "alias"){
+		return '<span class="property-chip property-alias">' + escaped + '</span>';
+	}
+	if(/^(true|false)$/i.test(value)){
+		return '<span class="property-boolean">' + escaped.toLowerCase() + '</span>';
+	}
+	return '<span class="property-value">' + escaped + '</span>';
+}
+
 function renderFrontMatter(frontMatter: string | undefined): string {
 	if(frontMatter === undefined){ return ""; }
-	return [
-		'<details class="frontmatter" data-source-line="0">',
-		"<summary>Properties</summary>",
-		"<pre>",
-		escapePreviewHtml(frontMatter),
-		"</pre>",
-		"</details>",
-	].join("");
+	const parsed = parseFrontMatterProperties(frontMatter);
+	const rows = parsed.properties.map(property => {
+		const values = property.values.length > 0
+			? property.values.map(value => renderFrontMatterValue(property.key, value)).join("")
+			: '<span class="property-empty">—</span>';
+		return '<div class="property-row"><span class="property-key">'
+			+ escapePreviewHtml(property.key)
+			+ '</span><div class="property-values">'
+			+ values
+			+ '</div></div>';
+	}).join("");
+	const raw = '<details class="frontmatter-raw"><summary>Raw YAML</summary><pre>'
+		+ escapePreviewHtml(frontMatter)
+		+ '</pre></details>';
+	return '<section class="frontmatter" data-source-line="0">'
+		+ '<div class="frontmatter-heading">Properties</div>'
+		+ (rows || '<div class="property-empty-state">Propertyはありません。</div>')
+		+ (!parsed.complete ? '<div class="frontmatter-note">複雑なYAMLはRaw YAMLにそのまま保持されています。</div>' : "")
+		+ raw
+		+ '</section>';
 }
 
 function decorateCalloutTokens(tokens: any[]) {
@@ -229,7 +380,10 @@ function decorateCalloutTokens(tokens: any[]) {
 		const title = match[3].trim() || match[1].toUpperCase();
 		tokens[index].attrJoin("class", "callout callout-" + type);
 		tokens[index].attrSet("data-callout", type);
-		if(match[2]){ tokens[index].attrSet("data-callout-fold", match[2]); }
+		if(match[2]){
+			tokens[index].attrSet("data-callout-fold", match[2]);
+			if(match[2] === "-"){ tokens[index].attrJoin("class", "callout-collapsed"); }
+		}
 
 		for(let cursor = index + 1; cursor < inlineIndex; ++cursor){
 			if(tokens[cursor].type === "paragraph_open"){
@@ -1543,7 +1697,15 @@ function App() {
 	};
 
 	const handlePreviewClick = async (event: MouseEvent) => {
-		const task = (event.target as HTMLElement).closest<HTMLInputElement>("input[data-quire-task-line]");
+		const targetElement = event.target as HTMLElement;
+		const calloutTitle = targetElement.closest<HTMLElement>("blockquote.callout[data-callout-fold] > .callout-title");
+		if(calloutTitle){
+			event.preventDefault();
+			calloutTitle.parentElement?.classList.toggle("callout-collapsed");
+			return;
+		}
+
+		const task = targetElement.closest<HTMLInputElement>("input[data-quire-task-line]");
 		if(task){
 			if(task.disabled){ return; }
 			const line = Number.parseInt(task.dataset.quireTaskLine ?? "", 10);

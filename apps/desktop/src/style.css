@@ -905,28 +905,103 @@ button.primary {
 
 .frontmatter {
 	margin: 16px 28px 0;
+	padding: 8px 10px 10px;
 	border: 1px solid #343434;
 	border-radius: 5px;
 	background: #191919;
-	color: #aaa;
+	color: #bbb;
 	font-size: 12px;
 }
 
-.frontmatter summary {
-	padding: 7px 10px;
-	cursor: pointer;
-	user-select: none;
-	color: #bbb;
+.frontmatter-heading {
+	margin-bottom: 5px;
+	color: #aaa;
 	font-weight: 600;
 }
 
-.frontmatter pre {
-	margin: 0;
-	padding: 0 10px 10px;
+.property-row {
+	display: grid;
+	grid-template-columns: minmax(90px, 0.32fr) minmax(0, 1fr);
+	gap: 10px;
+	padding: 4px 2px;
+	border-top: 1px solid #272727;
+}
+
+.property-key {
+	overflow: hidden;
+	color: #888;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.property-values {
+	display: flex;
+	min-width: 0;
+	flex-wrap: wrap;
+	gap: 4px 6px;
+}
+
+.property-chip {
+	display: inline-flex;
+	max-width: 100%;
+	padding: 1px 6px;
+	border: 1px solid #3a3a3a;
+	border-radius: 999px;
+	background: #222;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.property-tag {
+	color: #9dc1ff;
+}
+
+.property-alias {
+	color: #c7b4e8;
+}
+
+.property-boolean {
+	color: #c7d89b;
+}
+
+.property-value {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	color: #ccc;
+}
+
+.property-empty,
+.property-empty-state {
+	color: #666;
+}
+
+.frontmatter-note {
+	margin-top: 6px;
+	color: #9b8564;
+	font-size: 11px;
+}
+
+.frontmatter-raw {
+	margin-top: 7px;
+	border-top: 1px solid #2d2d2d;
+}
+
+.frontmatter-raw summary {
+	padding: 6px 0 2px;
+	cursor: pointer;
+	user-select: none;
+	color: #777;
+	font-size: 11px;
+}
+
+.frontmatter-raw pre {
+	margin: 4px 0 0;
+	padding: 6px 8px;
 	overflow: auto;
-	border: 0;
-	background: transparent;
-	color: #999;
+	border: 1px solid #303030;
+	background: #141414;
+	color: #888;
 	font: 11px/1.5 "Cascadia Mono", Consolas, monospace;
 	white-space: pre-wrap;
 	word-break: break-word;
@@ -1186,4 +1261,23 @@ button.primary {
 .quick-open-empty {
 	padding: 16px 10px;
 	color: #777;
+}
+
+.markdown-preview blockquote.callout[data-callout-fold] > .callout-title {
+	cursor: pointer;
+	user-select: none;
+}
+
+.markdown-preview blockquote.callout[data-callout-fold] > .callout-title::after {
+	content: "  ▾";
+	color: #777;
+	font-weight: 400;
+}
+
+.markdown-preview blockquote.callout.callout-collapsed > .callout-title::after {
+	content: "  ▸";
+}
+
+.markdown-preview blockquote.callout.callout-collapsed > :not(.callout-title) {
+	display: none;
 }
