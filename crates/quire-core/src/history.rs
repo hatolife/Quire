@@ -79,13 +79,14 @@ impl HistoryStore {
 		files.sort();
 		for relative in files {
 			let relative_os = relative.as_os_str().to_os_string();
+			let git_path = portable_path(&relative);
 			let hash = self.git_os(
 				[
 					OsString::from("hash-object"),
 					OsString::from("-w"),
 					OsString::from("--no-filters"),
 					OsString::from("--"),
-					relative_os.clone(),
+					relative_os,
 				],
 				None,
 			)?;
@@ -96,7 +97,7 @@ impl HistoryStore {
 					OsString::from("--cacheinfo"),
 					OsString::from("100644"),
 					OsString::from(hash.trim()),
-					relative_os,
+					OsString::from(git_path),
 				],
 				Some(&index),
 			)?;
