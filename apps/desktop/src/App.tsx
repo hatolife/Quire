@@ -130,6 +130,7 @@ function App() {
 	let autoSnapshotTimer: number | undefined;
 	let recoveryTimer: number | undefined;
 	let watchGeneration = 0;
+	let searchReindexPending = false;
 	const assetCache = new Map<string, Promise<string>>();
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
@@ -147,6 +148,8 @@ function App() {
 	const [searchQuery, setSearchQuery] = createSignal("");
 	const [searchResults, setSearchResults] = createSignal<SearchHit[]>([]);
 	const [searching, setSearching] = createSignal(false);
+	const [searchIndexReady, setSearchIndexReady] = createSignal(false);
+	const [searchIndexBuilding, setSearchIndexBuilding] = createSignal(false);
 	const [initialEditorLine, setInitialEditorLine] = createSignal<number | undefined>();
 	const [backlinks, setBacklinks] = createSignal<Backlink[]>([]);
 	const [historyOpen, setHistoryOpen] = createSignal(false);
@@ -241,6 +244,38 @@ function App() {
 		}
 	};
 
+	const rebuildSearchIndex = async (reason = "manual") => {
+		if(!workspace()){
+			setSearchIndexReady(false);
+			return;
+		}
+		if(searchIndexBuilding()){
+			searchReindexPending = true;
+			return;
+		}
+		setSearchIndexBuilding(true);
+		try{
+			do{
+				searchReindexPending = false;
+				const count = await workspaceReindex();
+				if(count !== null){
+					setSearchIndexReady(true);
+					void appendLog("info", "index", "Search index rebuilt: " + count + " documents / " + reason);
+				}
+			}while(searchReindexPending && workspace());
+		}catch(error){
+			setSearchIndexReady(false);
+			updateStatus("Search index rebuild error: " + String(error), "error", "index");
+		}finally{
+			setSearchIndexBuilding(false);
+		}
+	};
+
+	const invalidateSearchIndex = (reason: string) => {
+		setSearchIndexReady(false);
+		void rebuildSearchIndex(reason);
+	};
+
 	const refreshHistory = async () => {
 		if(!workspace()){
 			setSnapshots([]);
@@ -332,6 +367,7 @@ function App() {
 			setEditorSession(value => value + 1);
 			assetCache.clear();
 			void refreshBacklinks(restored.relativePath);
+			invalidateSearchIndex("History restore");
 			updateStatus("Historyから復元しました: " + restored.relativePath, "info", "history");
 		}catch(error){
 			updateStatus("History restore error: " + String(error), "error", "history");
@@ -383,8 +419,14 @@ function App() {
 
 	createEffect(() => {
 		const query = searchQuery().trim();
+		const indexReady = searchIndexReady();
 		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
 		if(!query || !workspace()){
+			setSearchResults([]);
+			setSearching(false);
+			return;
+		}
+		if(!indexReady){
 			setSearchResults([]);
 			setSearching(false);
 			return;
@@ -440,6 +482,8 @@ function App() {
 						const opened = await workspaceOpen(settings.lastWorkspace);
 						setWorkspace(opened.info);
 						setEntries(opened.entries);
+						setSearchIndexReady(false);
+						void rebuildSearchIndex("session restore");
 						assetCache.clear();
 						setExternalConflict(false);
 						void startWorkspaceWatcher();
@@ -653,6 +697,8 @@ function App() {
 			const opened = await workspaceOpen(selected);
 			setWorkspace(opened.info);
 			setEntries(opened.entries);
+			setSearchIndexReady(false);
+			void rebuildSearchIndex("workspace open");
 			assetCache.clear();
 			setExternalConflict(false);
 			void startWorkspaceWatcher();
@@ -694,12 +740,7 @@ function App() {
 
 	const reconcileExternalChanges = async () => {
 		await refreshExplorer();
-		try{
-			const count = await workspaceReindex();
-			void appendLog("info", "index", "Search index rebuilt: " + count + " documents");
-		}catch(error){
-			updateStatus("Search index rebuild error: " + String(error), "error", "index");
-		}
+		invalidateSearchIndex("file watcher");
 		const current = document();
 		if(!current){ return; }
 		try{
@@ -786,6 +827,7 @@ function App() {
 			setDraft(contentForEditor(created.content));
 			setExternalConflict(false);
 			setBacklinks([]);
+			invalidateSearchIndex("Document create");
 			updateStatus(created.relativePath + " を作成しました", "info", "document");
 		}catch(error){
 			updateStatus("Document create error: " + String(error), "error", "document");
@@ -811,6 +853,7 @@ function App() {
 			setDraft(contentForEditor(moved.document.content));
 			setExternalConflict(false);
 			void refreshBacklinks(moved.document.relativePath);
+			invalidateSearchIndex("Document move");
 			const linkMessage = moved.updatedLinks.length > 0 ? " / Link更新 " + moved.updatedLinks.length + "件" : "";
 			updateStatus(current.relativePath + " → " + moved.document.relativePath + linkMessage, "info", "document");
 		}catch(error){
@@ -835,6 +878,7 @@ function App() {
 			setBacklinks([]);
 			assetCache.clear();
 			await refreshExplorer();
+			invalidateSearchIndex("Document delete");
 			updateStatus(current.relativePath + " を削除しました", "info", "document");
 		}catch(error){
 			updateStatus("Document delete error: " + String(error), "error", "document");
@@ -965,6 +1009,7 @@ function App() {
 			setExternalConflict(false);
 			setRecoveryDraft(null);
 			void recoveryClear().catch(error => updateStatus("Recovery clear error: " + String(error), "error", "recovery"));
+			invalidateSearchIndex("Document save");
 			updateStatus(saved.relativePath + " を保存しました", "info", "save");
 			scheduleAutoSnapshot(saved.relativePath);
 		}catch(error){
@@ -1152,19 +1197,28 @@ function App() {
 									</For>
 								}
 							>
-								<Show when={!searching()} fallback={<div class="search-state">検索中...</div>}>
-									<For each={searchResults()}>
-										{hit => (
-											<button class="search-hit" onClick={() => void openSearchHit(hit)}>
-												<span class="search-hit-path">
-													{hit.relativePath}{hit.line ? ":" + hit.line : ""}
-												</span>
-												<span class="search-hit-preview">{hit.preview}</span>
-											</button>
-										)}
-									</For>
-									<Show when={searchResults().length === 0}>
-										<div class="search-state">該当なし</div>
+								<Show
+									when={searchIndexReady()}
+									fallback={
+										<div class="search-state">
+											{searchIndexBuilding() ? "検索indexを構築中..." : "検索indexを利用できません"}
+										</div>
+									}
+								>
+									<Show when={!searching()} fallback={<div class="search-state">検索中...</div>}>
+										<For each={searchResults()}>
+											{hit => (
+												<button class="search-hit" onClick={() => void openSearchHit(hit)}>
+													<span class="search-hit-path">
+														{hit.relativePath}{hit.line ? ":" + hit.line : ""}
+													</span>
+													<span class="search-hit-preview">{hit.preview}</span>
+												</button>
+											)}
+										</For>
+										<Show when={searchResults().length === 0}>
+											<div class="search-state">該当なし</div>
+										</Show>
 									</Show>
 								</Show>
 							</Show>

@@ -10,11 +10,15 @@ use serde::Serialize;
 use std::path::Path;
 use tauri::ipc::Channel;
 use tauri::Manager;
-use std::sync::Mutex;
+use std::sync::{
+	atomic::{AtomicU64, Ordering},
+	Mutex,
+};
 
 struct AppState {
 	workspace: Mutex<Option<Workspace>>,
 	search_index: Mutex<Option<SearchIndex>>,
+	search_generation: AtomicU64,
 	history_lock: Mutex<()>,
 }
 
@@ -30,13 +34,16 @@ fn workspace_open(path: String, state: tauri::State<'_, AppState>) -> Result<Wor
 	let workspace = Workspace::open(path).map_err(|error| error.to_string())?;
 	let info = workspace.info();
 	let entries = workspace.list_directory("").map_err(|error| error.to_string())?;
-	let search_index = workspace.build_search_index().map_err(|error| error.to_string())?;
+
+	state.search_generation.fetch_add(1, Ordering::SeqCst);
+	{
+		let mut index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+		*index = None;
+	}
 	{
 		let mut current = state.workspace.lock().map_err(|_| "Workspace state lock failed.".to_string())?;
 		*current = Some(workspace);
 	}
-	let mut index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
-	*index = Some(search_index);
 	Ok(WorkspaceOpened { info, entries })
 }
 
@@ -68,12 +75,22 @@ fn workspace_search(query: String, limit: usize, state: tauri::State<'_, AppStat
 }
 
 #[tauri::command]
-fn workspace_reindex(state: tauri::State<'_, AppState>) -> Result<usize, String> {
-	let rebuilt = with_workspace(&state, |workspace| workspace.build_search_index().map_err(|error| error.to_string()))?;
+fn workspace_reindex(state: tauri::State<'_, AppState>) -> Result<Option<usize>, String> {
+	let generation = state.search_generation.load(Ordering::SeqCst);
+	let root = with_workspace(&state, |workspace| Ok(std::path::PathBuf::from(workspace.info().root)))?;
+	let workspace = Workspace::open(root).map_err(|error| error.to_string())?;
+	let rebuilt = workspace.build_search_index().map_err(|error| error.to_string())?;
 	let count = rebuilt.document_count();
+
+	if state.search_generation.load(Ordering::SeqCst) != generation {
+		return Ok(None);
+	}
 	let mut index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+	if state.search_generation.load(Ordering::SeqCst) != generation {
+		return Ok(None);
+	}
 	*index = Some(rebuilt);
-	Ok(count)
+	Ok(Some(count))
 }
 
 #[tauri::command]
@@ -429,6 +446,7 @@ fn main() {
 		.manage(AppState {
 			workspace: Mutex::new(None),
 			search_index: Mutex::new(None),
+			search_generation: AtomicU64::new(0),
 			history_lock: Mutex::new(()),
 		})
 		.manage(editor::EditorState::default())

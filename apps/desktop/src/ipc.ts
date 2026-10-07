@@ -99,7 +99,7 @@ export function workspaceSearch(query: string, limit = 100) {
 }
 
 export function workspaceReindex() {
-	return invoke<number>("workspace_reindex");
+	return invoke<number | null>("workspace_reindex");
 }
 
 export function documentBacklinks(relativePath: string) {
