@@ -1,6 +1,6 @@
 use crate::{scan, Workspace, WorkspaceError};
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -30,6 +30,8 @@ pub struct DocumentMove {
 #[derive(Debug, Clone, Default)]
 pub struct LinkIndex {
 	wiki_by_stem: HashMap<String, String>,
+	wiki_by_alias: HashMap<String, String>,
+	aliases_by_document: BTreeMap<String, Vec<String>>,
 	backlinks: HashMap<String, Vec<Backlink>>,
 	document_count: usize,
 }
@@ -57,6 +59,17 @@ impl LinkIndex {
 			documents.push((relative, file));
 		}
 
+		let mut aliases_by_document = BTreeMap::new();
+		for (relative, file) in &documents {
+			let content = match fs::read_to_string(file) {
+				Ok(content) => content,
+				Err(error) if error.kind() == std::io::ErrorKind::InvalidData => continue,
+				Err(error) => return Err(WorkspaceError::Io(error)),
+			};
+			aliases_by_document.insert(relative.clone(), extract_frontmatter_aliases(&content));
+		}
+		let wiki_by_alias = build_alias_map(&aliases_by_document);
+
 		let mut backlinks: HashMap<String, Vec<Backlink>> = HashMap::new();
 		for (source_relative, source) in &documents {
 			let content = match fs::read_to_string(source) {
@@ -76,7 +89,7 @@ impl LinkIndex {
 
 				let mut targets = HashSet::new();
 				for (raw_target, _) in extract_links(line) {
-					if let Some(target) = resolve_indexed_wiki_target(workspace, source_relative, &raw_target, &wiki_by_stem) {
+					if let Some(target) = resolve_indexed_wiki_target(workspace, source_relative, &raw_target, &wiki_by_stem, &wiki_by_alias) {
 						targets.insert(target);
 					}
 				}
@@ -102,6 +115,8 @@ impl LinkIndex {
 		Ok(Self {
 			document_count: documents.len(),
 			wiki_by_stem,
+			wiki_by_alias,
+			aliases_by_document,
 			backlinks,
 		})
 	}
@@ -121,6 +136,9 @@ impl LinkIndex {
 		if !stem.is_empty() {
 			self.wiki_by_stem.entry(stem).or_insert_with(|| relative_path.to_string());
 		}
+		self.aliases_by_document
+			.insert(relative_path.to_string(), extract_frontmatter_aliases(&document.content));
+		self.wiki_by_alias = build_alias_map(&self.aliases_by_document);
 
 		let mut in_fence = false;
 		for (line_index, line) in document.content.lines().enumerate() {
@@ -134,7 +152,7 @@ impl LinkIndex {
 
 			let mut targets = HashSet::new();
 			for (raw_target, _) in extract_links(line) {
-				if let Some(target) = resolve_indexed_wiki_target(workspace, relative_path, &raw_target, &self.wiki_by_stem) {
+				if let Some(target) = resolve_indexed_wiki_target(workspace, relative_path, &raw_target, &self.wiki_by_stem, &self.wiki_by_alias) {
 					targets.insert(target);
 				}
 			}
@@ -175,7 +193,10 @@ impl LinkIndex {
 			.and_then(|stem| stem.to_str())
 			.unwrap_or(&target)
 			.to_lowercase();
-		self.wiki_by_stem.get(&wanted).cloned()
+		self.wiki_by_stem
+			.get(&wanted)
+			.cloned()
+			.or_else(|| self.wiki_by_alias.get(&wanted).cloned())
 	}
 }
 
@@ -518,9 +539,25 @@ impl Workspace {
 			.to_lowercase();
 		let mut files = scan::markdown_files(&self.root).map_err(WorkspaceError::Io)?;
 		files.sort();
-		for file in files {
+		for file in &files {
 			let stem = file.file_stem().and_then(|stem| stem.to_str()).unwrap_or("");
 			if stem.to_lowercase() == wanted {
+				return Ok(Some(portable_path(
+					file.strip_prefix(&self.root)
+						.map_err(|_| WorkspaceError::InvalidRelativePath(raw_target.to_string()))?,
+				)));
+			}
+		}
+		for file in files {
+			let content = match fs::read_to_string(&file) {
+				Ok(content) => content,
+				Err(error) if error.kind() == std::io::ErrorKind::InvalidData => continue,
+				Err(error) => return Err(WorkspaceError::Io(error)),
+			};
+			if extract_frontmatter_aliases(&content)
+				.iter()
+				.any(|alias| alias.to_lowercase() == wanted)
+			{
 				return Ok(Some(portable_path(
 					file.strip_prefix(&self.root)
 						.map_err(|_| WorkspaceError::InvalidRelativePath(raw_target.to_string()))?,
@@ -553,6 +590,7 @@ fn resolve_indexed_wiki_target(
 	source_relative_path: &str,
 	raw_target: &str,
 	wiki_by_stem: &HashMap<String, String>,
+	wiki_by_alias: &HashMap<String, String>,
 ) -> Option<String> {
 	let target = wiki_target_without_heading(raw_target)?;
 	if target.contains('/') || target.starts_with('.') {
@@ -563,7 +601,129 @@ fn resolve_indexed_wiki_target(
 		.and_then(|stem| stem.to_str())
 		.unwrap_or(&target)
 		.to_lowercase();
-	wiki_by_stem.get(&wanted).cloned()
+	wiki_by_stem
+		.get(&wanted)
+		.cloned()
+		.or_else(|| wiki_by_alias.get(&wanted).cloned())
+}
+
+fn build_alias_map(aliases_by_document: &BTreeMap<String, Vec<String>>) -> HashMap<String, String> {
+	let mut aliases = HashMap::new();
+	for (relative_path, document_aliases) in aliases_by_document {
+		for alias in document_aliases {
+			let key = alias.to_lowercase();
+			if !key.is_empty() {
+				aliases.entry(key).or_insert_with(|| relative_path.clone());
+			}
+		}
+	}
+	aliases
+}
+
+fn frontmatter_end(content: &str) -> Option<usize> {
+	if !content.starts_with("---\n") && !content.starts_with("---\r\n") {
+		return None;
+	}
+	let mut offset = 0usize;
+	for (index, line) in content.split_inclusive('\n').enumerate() {
+		offset += line.len();
+		if index == 0 {
+			continue;
+		}
+		let trimmed = line.trim_end_matches(['\r', '\n']);
+		if trimmed == "---" || trimmed == "..." {
+			return Some(offset);
+		}
+	}
+	None
+}
+
+fn extract_frontmatter_aliases(content: &str) -> Vec<String> {
+	let Some(end) = frontmatter_end(content) else { return Vec::new(); };
+	let header = &content[..end];
+	let mut aliases = Vec::new();
+	let mut collecting_list = false;
+	for line in header.lines().skip(1) {
+		let trimmed = line.trim();
+		if trimmed == "---" || trimmed == "..." {
+			break;
+		}
+		if collecting_list {
+			if let Some(value) = trimmed.strip_prefix("- ") {
+				push_frontmatter_alias(&mut aliases, value);
+				continue;
+			}
+			if trimmed.is_empty() {
+				continue;
+			}
+			collecting_list = false;
+		}
+		let Some((key, value)) = trimmed.split_once(':') else { continue; };
+		if !key.eq_ignore_ascii_case("aliases") && !key.eq_ignore_ascii_case("alias") {
+			continue;
+		}
+		let value = value.trim();
+		if value.is_empty() {
+			collecting_list = true;
+			continue;
+		}
+		if value.starts_with('[') && value.ends_with(']') {
+			for item in split_inline_yaml_list(&value[1..value.len() - 1]) {
+				push_frontmatter_alias(&mut aliases, &item);
+			}
+		}else{
+			push_frontmatter_alias(&mut aliases, value);
+		}
+	}
+	aliases
+}
+
+fn split_inline_yaml_list(value: &str) -> Vec<String> {
+	let mut items = Vec::new();
+	let mut current = String::new();
+	let mut quote: Option<char> = None;
+	let mut escaped = false;
+	for ch in value.chars() {
+		if escaped {
+			current.push(ch);
+			escaped = false;
+			continue;
+		}
+		if ch == '\\' && quote == Some('"') {
+			current.push(ch);
+			escaped = true;
+			continue;
+		}
+		if matches!(ch, '"' | '\'') {
+			if quote == Some(ch) {
+				quote = None;
+			}else if quote.is_none() {
+				quote = Some(ch);
+			}
+			current.push(ch);
+			continue;
+		}
+		if ch == ',' && quote.is_none() {
+			items.push(current.trim().to_string());
+			current.clear();
+		}else{
+			current.push(ch);
+		}
+	}
+	if !current.trim().is_empty() {
+		items.push(current.trim().to_string());
+	}
+	items
+}
+
+fn push_frontmatter_alias(aliases: &mut Vec<String>, value: &str) {
+	let alias = value
+		.trim()
+		.trim_matches(|ch| matches!(ch, '"' | '\''))
+		.trim();
+	if !alias.is_empty() {
+		aliases.push(alias.to_string());
+	}
 }
 
 fn wiki_target_for_path(relative_path: &str) -> String {
@@ -927,6 +1087,50 @@ mod tests {
 			workspace.resolve_markdown_target("notes/nested/Source.md", "../../../outside.md").unwrap(),
 			None
 		);
+	}
+
+	#[test]
+	fn wiki_links_resolve_frontmatter_aliases_with_filename_priority() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(
+			temp.path().join("Canonical.md"),
+			"---\naliases:\n  - Friendly Name\n  - Other Alias\n---\n# Canonical\n",
+		).unwrap();
+		fs::write(
+			temp.path().join("Inline.md"),
+			"---\naliases: [\"Inline Alias\", 'Alias, With Comma']\n---\n",
+		).unwrap();
+		fs::write(temp.path().join("Friendly Name.md"), "# Filename wins").unwrap();
+		fs::write(
+			temp.path().join("Source.md"),
+			"[[Friendly Name]] [[Other Alias]] [[Inline Alias]] [[Alias, With Comma]]",
+		).unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let index = workspace.build_link_index().unwrap();
+
+		assert_eq!(index.resolve_bare_wiki_target("Friendly Name").as_deref(), Some("Friendly Name.md"));
+		assert_eq!(index.resolve_bare_wiki_target("Other Alias").as_deref(), Some("Canonical.md"));
+		assert_eq!(index.resolve_bare_wiki_target("Inline Alias").as_deref(), Some("Inline.md"));
+		assert_eq!(index.resolve_bare_wiki_target("Alias, With Comma").as_deref(), Some("Inline.md"));
+		assert_eq!(
+			workspace.resolve_wiki_target("Source.md", "Other Alias").unwrap().as_deref(),
+			Some("Canonical.md")
+		);
+	}
+
+	#[test]
+	fn link_index_refresh_updates_frontmatter_aliases() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("Target.md"), "---\nalias: Old Alias\n---\n").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let mut index = workspace.build_link_index().unwrap();
+		assert_eq!(index.resolve_bare_wiki_target("Old Alias").as_deref(), Some("Target.md"));
+
+		fs::write(temp.path().join("Target.md"), "---\nalias: New Alias\n---\n").unwrap();
+		index.refresh_document(&workspace, "Target.md").unwrap();
+
+		assert_eq!(index.resolve_bare_wiki_target("Old Alias"), None);
+		assert_eq!(index.resolve_bare_wiki_target("New Alias").as_deref(), Some("Target.md"));
 	}
 
 	#[test]
