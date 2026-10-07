@@ -1916,24 +1916,36 @@ function App() {
 			return;
 		}
 
+		let importedCount = 0;
+		let lastRelativePath = "";
 		try{
-			const imported = [];
 			for(const path of imagePaths){
-				imported.push(await assetImport(current.relativePath, path));
+				const imported = await assetImport(current.relativePath, path);
+				await editorInsertText((importedCount > 0 ? "\n" : "") + "![](" + imported.markdownSource + ")");
+				++importedCount;
+				lastRelativePath = imported.relativePath;
 			}
-			const markdown = imported.map(asset => "![](" + asset.markdownSource + ")").join("\n");
-			await editorInsertText(markdown);
 			assetCache.clear();
 			await refreshExplorer();
 			updateStatus(
-				imported.length === 1
-					? "画像を追加しました: " + imported[0].relativePath
-					: "画像を" + imported.length + "件追加しました。",
+				importedCount === 1
+					? "画像を追加しました: " + lastRelativePath
+					: "画像を" + importedCount + "件追加しました。",
 				"info",
 				"asset",
 			);
 		}catch(error){
-			updateStatus("Asset import error: " + String(error), "error", "asset");
+			if(importedCount > 0){
+				assetCache.clear();
+				await refreshExplorer();
+				updateStatus(
+					"画像を" + importedCount + "件追加した後に失敗しました: " + String(error),
+					"warn",
+					"asset",
+				);
+			}else{
+				updateStatus("Asset import error: " + String(error), "error", "asset");
+			}
 		}
 	};
 
