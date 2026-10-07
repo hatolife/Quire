@@ -112,6 +112,7 @@ function contentForEditor(content: string): string {
 function App() {
 	let workspaceElement!: HTMLDivElement;
 	let previewElement!: HTMLDivElement;
+	let explorerSearchInput!: HTMLInputElement;
 	let suppressEditorViewport = false;
 	let suppressPreviewScroll = false;
 	let closeUnlisten: (() => void) | undefined;
@@ -438,9 +439,32 @@ function App() {
 			});
 
 		commandKeyHandler = (event: KeyboardEvent) => {
-			if(event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "p"){
+			if(!event.ctrlKey || event.altKey){ return; }
+			const key = event.key.toLowerCase();
+			if(event.shiftKey && key === "p"){
 				event.preventDefault();
 				setCommandPaletteOpen(true);
+				return;
+			}
+			if(event.shiftKey && key === "f"){
+				event.preventDefault();
+				explorerSearchInput?.focus();
+				explorerSearchInput?.select();
+				return;
+			}
+			if(!event.shiftKey && key === "o"){
+				event.preventDefault();
+				void chooseWorkspace();
+				return;
+			}
+			if(!event.shiftKey && key === "n"){
+				event.preventDefault();
+				if(workspace()){ void createDocument(); }
+				return;
+			}
+			if(!event.shiftKey && event.key === ","){
+				event.preventDefault();
+				setSettingsOpen(true);
 			}
 		};
 		window.addEventListener("keydown", commandKeyHandler);
@@ -834,12 +858,14 @@ function App() {
 			id: "workspace.open",
 			title: "Workspaceを開く",
 			keywords: "folder vault open",
+			shortcut: "Ctrl+O",
 			run: () => chooseWorkspace(),
 		},
 		{
 			id: "document.create",
 			title: "新規Markdown",
 			keywords: "new document note",
+			shortcut: "Ctrl+N",
 			enabled: workspace() !== null,
 			run: () => createDocument(),
 		},
@@ -857,6 +883,17 @@ function App() {
 			shortcut: "Ctrl+S",
 			enabled: document() !== null && dirty(),
 			run: () => saveDocument(),
+		},
+		{
+			id: "workspace.search.focus",
+			title: "検索欄へ移動",
+			keywords: "search find full text",
+			shortcut: "Ctrl+Shift+F",
+			enabled: workspace() !== null,
+			run: () => {
+				explorerSearchInput?.focus();
+				explorerSearchInput?.select();
+			},
 		},
 		{
 			id: "workspace.snapshot",
@@ -891,6 +928,7 @@ function App() {
 			id: "settings.show",
 			title: "設定を開く",
 			keywords: "settings preferences",
+			shortcut: "Ctrl+,",
 			run: () => setSettingsOpen(true),
 		},
 		{
@@ -947,6 +985,7 @@ function App() {
 						</div>
 						<div class="explorer-search-row">
 							<input
+								ref={explorerSearchInput}
 								class="explorer-search"
 								type="search"
 								value={searchQuery()}
