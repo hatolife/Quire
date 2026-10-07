@@ -17,7 +17,7 @@ export type WorkspaceOpened = {
 };
 
 export type WorkspaceWatchMessage =
-	| { kind: "changed"; paths: string[] }
+	| { kind: "changed"; change: "create" | "modify" | "remove" | "other"; paths: string[] }
 	| { kind: "error"; message: string };
 
 export type Document = {

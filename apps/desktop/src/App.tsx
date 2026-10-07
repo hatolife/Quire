@@ -380,6 +380,7 @@ function App() {
 	let recoveryTimer: number | undefined;
 	let watchGeneration = 0;
 	let searchReindexPending = false;
+	let pendingWatchChanges: Array<{ change: "create" | "modify" | "remove" | "other"; paths: string[] }> = [];
 	let previewResolveGeneration = 0;
 	const assetCache = new Map<string, Promise<string>>();
 
@@ -981,6 +982,7 @@ function App() {
 		closeUnlisten?.();
 		if(commandKeyHandler){ window.removeEventListener("keydown", commandKeyHandler); }
 		++watchGeneration;
+		pendingWatchChanges = [];
 		if(reconcileTimer !== undefined){ window.clearTimeout(reconcileTimer); }
 		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
 		if(settingsTimer !== undefined){ window.clearTimeout(settingsTimer); }
@@ -1146,11 +1148,32 @@ function App() {
 		return workspaceList(relativePath);
 	};
 
+	const isMarkdownPath = (path: string) => /\.md(?:own)?$/i.test(path);
+	const isQuireIgnorePath = (path: string) => path.split("/").at(-1) === ".quireignore";
+
 	const reconcileExternalChanges = async () => {
-		await refreshExplorer();
-		invalidateSearchIndex("file watcher");
+		const changes = pendingWatchChanges;
+		pendingWatchChanges = [];
+		if(changes.length === 0){ return; }
+
+		const paths = Array.from(new Set(changes.flatMap(change => change.paths)));
+		const structural = changes.some(change => change.change !== "modify")
+			|| paths.some(isQuireIgnorePath);
+		if(structural){
+			await refreshExplorer();
+			invalidateSearchIndex("file watcher structural change");
+		}else{
+			const markdownPaths = paths.filter(isMarkdownPath);
+			for(const path of markdownPaths){
+				await refreshOneDocumentIndex(path, "file watcher modify");
+			}
+		}
+		if(paths.some(path => !isMarkdownPath(path))){
+			assetCache.clear();
+		}
+
 		const current = document();
-		if(!current){ return; }
+		if(!current || (!structural && !paths.includes(current.relativePath))){ return; }
 		try{
 			const disk = await documentOpen(current.relativePath);
 			if(disk.revision === current.revision){
@@ -1171,7 +1194,7 @@ function App() {
 		}catch(error){
 			if(dirty()){
 				setExternalConflict(true);
-				updateStatus("外部変更を検出しました。Documentを再読込できません: " + String(error), "warn", "watcher");
+				updateStatus("外部変更を検出しました。未保存bufferは保持しています: " + String(error), "warn", "watcher");
 			}else{
 				setDocument(null);
 				setDraft("");
@@ -1181,7 +1204,8 @@ function App() {
 		}
 	};
 
-	const scheduleExternalReconcile = () => {
+	const scheduleExternalReconcile = (change: { change: "create" | "modify" | "remove" | "other"; paths: string[] }) => {
+		pendingWatchChanges.push(change);
 		if(reconcileTimer !== undefined){ window.clearTimeout(reconcileTimer); }
 		reconcileTimer = window.setTimeout(() => {
 			reconcileTimer = undefined;
@@ -1198,7 +1222,7 @@ function App() {
 				updateStatus("Watcher error: " + message.message, "error", "watcher");
 				return;
 			}
-			scheduleExternalReconcile();
+			scheduleExternalReconcile({ change: message.change, paths: message.paths });
 		};
 		try{
 			await workspaceWatch(stream);

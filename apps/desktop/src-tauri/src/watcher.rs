@@ -1,4 +1,4 @@
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -9,10 +9,19 @@ pub struct WatcherState {
 	watcher: Mutex<Option<RecommendedWatcher>>,
 }
 
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WatchChangeKind {
+	Create,
+	Modify,
+	Remove,
+	Other,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WatchMessage {
-	Changed { paths: Vec<String> },
+	Changed { change: WatchChangeKind, paths: Vec<String> },
 	Error { message: String },
 }
 
@@ -28,7 +37,12 @@ impl WatcherState {
 						.iter()
 						.filter_map(|path| relative_path(&root_for_callback, path))
 						.collect::<Vec<_>>();
-					let _ = stream_for_callback.send(WatchMessage::Changed { paths });
+					if !paths.is_empty() {
+						let _ = stream_for_callback.send(WatchMessage::Changed {
+							change: classify_change(&event.kind),
+							paths,
+						});
+					}
 				}
 				Err(error) => {
 					let _ = stream_for_callback.send(WatchMessage::Error {
@@ -55,8 +69,19 @@ impl WatcherState {
 	}
 }
 
+fn classify_change(kind: &EventKind) -> WatchChangeKind {
+	match kind {
+		EventKind::Create(_) => WatchChangeKind::Create,
+		EventKind::Modify(_) => WatchChangeKind::Modify,
+		EventKind::Remove(_) => WatchChangeKind::Remove,
+		_ => WatchChangeKind::Other,
+	}
+}
+
 fn relative_path(root: &Path, path: &Path) -> Option<String> {
-	path.strip_prefix(root)
-		.ok()
-		.map(|relative| relative.to_string_lossy().replace('\\', "/"))
+	let relative = path.strip_prefix(root).ok()?;
+	if relative.components().next().is_some_and(|component| component.as_os_str() == ".git") {
+		return None;
+	}
+	Some(relative.to_string_lossy().replace('\\', "/"))
 }
