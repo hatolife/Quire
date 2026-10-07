@@ -1060,6 +1060,9 @@ function App() {
 					.then(setBacklinks)
 					.catch(error => updateStatus("Backlink index read error: " + String(error), "error", "links"));
 			}
+			void workspaceGraph()
+				.then(setLinkGraph)
+				.catch(error => updateStatus("Graph index read error: " + String(error), "error", "links"));
 			void appendLog("info", "index", "Document indexes refreshed: " + relativePath + " / " + reason);
 		}catch(error){
 			invalidateSearchIndex(reason);
