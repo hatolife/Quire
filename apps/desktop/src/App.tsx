@@ -243,12 +243,48 @@ function decorateCalloutTokens(tokens: any[]) {
 	}
 }
 
+function decorateTaskListTokens(tokens: any[]) {
+	for(let index = 0; index < tokens.length; ++index){
+		if(tokens[index].type !== "list_item_open"){ continue; }
+		let depth = 1;
+		let inlineIndex = -1;
+		for(let cursor = index + 1; cursor < tokens.length && depth > 0; ++cursor){
+			if(tokens[cursor].type === "list_item_open"){ ++depth; }
+			if(tokens[cursor].type === "list_item_close"){ --depth; }
+			if(depth === 1 && inlineIndex < 0 && tokens[cursor].type === "inline"){
+				inlineIndex = cursor;
+			}
+		}
+		if(inlineIndex < 0){ continue; }
+		const inline = tokens[inlineIndex];
+		const match = inline.content.match(/^\[([ xX])\][ \t]+/);
+		if(!match){ continue; }
+
+		const checked = match[1].toLowerCase() === "x";
+		tokens[index].attrJoin("class", "task-list-item");
+		tokens[index].attrSet("data-task-checked", checked ? "true" : "false");
+		inline.content = inline.content.slice(match[0].length);
+
+		if(Array.isArray(inline.children)){
+			for(const child of inline.children){
+				if(child.type !== "text"){ continue; }
+				const childMatch = child.content.match(/^\[([ xX])\][ \t]+/);
+				if(childMatch){
+					child.content = child.content.slice(childMatch[0].length);
+				}
+				break;
+			}
+		}
+	}
+}
+
 function renderPreview(source: string, sourceDocument?: string, allowDocumentEmbeds = true): string {
 	const parsed = splitFrontMatter(source);
 	const environment = {};
 	const tokens = markdown.parse(parsed.body, environment);
 	decoratePreviewTokens(tokens, parsed.lineOffset, sourceDocument, allowDocumentEmbeds);
 	decorateCalloutTokens(tokens);
+	decorateTaskListTokens(tokens);
 	return renderFrontMatter(parsed.frontMatter) + markdown.renderer.render(tokens, markdown.options, environment);
 }
 

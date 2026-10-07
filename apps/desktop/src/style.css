@@ -1062,3 +1062,26 @@ button.primary {
 .tag-entry small {
 	color: #777;
 }
+
+.markdown-preview li.task-list-item {
+	position: relative;
+	list-style: none;
+}
+
+.markdown-preview li.task-list-item::before {
+	content: "☐";
+	position: absolute;
+	right: calc(100% + 0.45em);
+	color: #aaa;
+	font-size: 1.05em;
+}
+
+.markdown-preview li.task-list-item[data-task-checked="true"]::before {
+	content: "☑";
+	color: #999;
+}
+
+.markdown-preview li.task-list-item[data-task-checked="true"] > p,
+.markdown-preview li.task-list-item[data-task-checked="true"] > :not(ul):not(ol) {
+	color: #888;
+}
