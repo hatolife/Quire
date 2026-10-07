@@ -67,8 +67,14 @@ impl SearchIndex {
 				Ok(content) => content,
 				Err(_) => continue,
 			};
+			for tag in extract_frontmatter_tags(&content) {
+				let key = tag.to_lowercase();
+				let entry = tag_counts.entry(key).or_insert_with(|| (tag, 0));
+				entry.1 += 1;
+			}
 			let mut in_fence = false;
-			for line in content.lines() {
+			let body_start = frontmatter_body_start(&content);
+			for line in content[body_start..].lines() {
 				if is_fence(line) {
 					in_fence = !in_fence;
 					continue;
@@ -113,16 +119,23 @@ impl SearchIndex {
 	fn rebuild_tags(&mut self) {
 		let mut tag_counts: HashMap<String, (String, usize)> = HashMap::new();
 		for document in &self.documents {
+			let content = document.lines.iter().map(|line| line.original.as_str()).collect::<Vec<_>>().join("\n");
+			for tag in extract_frontmatter_tags(&content) {
+				let key = tag.to_lowercase();
+				let entry = tag_counts.entry(key).or_insert_with(|| (tag, 0));
+				entry.1 += 1;
+			}
 			let mut in_fence = false;
-			for line in &document.lines {
-				if is_fence(&line.original) {
+			let body_start = frontmatter_body_start(&content);
+			for line in content[body_start..].lines() {
+				if is_fence(line) {
 					in_fence = !in_fence;
 					continue;
 				}
 				if in_fence {
 					continue;
 				}
-				for tag in extract_tags(&line.original) {
+				for tag in extract_tags(line) {
 					let key = tag.to_lowercase();
 					let entry = tag_counts.entry(key).or_insert_with(|| (tag, 0));
 					entry.1 += 1;
@@ -215,6 +228,82 @@ fn indexed_document(relative_path: String, content: &str) -> IndexedDocument {
 fn is_fence(line: &str) -> bool {
 	let trimmed = line.trim_start().as_bytes();
 	trimmed.starts_with(&[126, 126, 126]) || trimmed.starts_with(&[96, 96, 96])
+}
+
+fn frontmatter_body_start(content: &str) -> usize {
+	if !content.starts_with("---\n") && !content.starts_with("---\r\n") {
+		return 0;
+	}
+	let mut offset = 0usize;
+	for (index, line) in content.split_inclusive('\n').enumerate() {
+		offset += line.len();
+		if index == 0 {
+			continue;
+		}
+		let trimmed = line.trim_end_matches(['\r', '\n']);
+		if trimmed == "---" || trimmed == "..." {
+			return offset;
+		}
+	}
+	0
+}
+
+fn extract_frontmatter_tags(content: &str) -> Vec<String> {
+	let body_start = frontmatter_body_start(content);
+	if body_start == 0 {
+		return Vec::new();
+	}
+	let header = &content[..body_start];
+	let mut tags = Vec::new();
+	let mut collecting_list = false;
+	for line in header.lines().skip(1) {
+		let trimmed = line.trim();
+		if trimmed == "---" || trimmed == "..." {
+			break;
+		}
+		if collecting_list {
+			if let Some(value) = trimmed.strip_prefix("- ") {
+				push_frontmatter_tag(&mut tags, value);
+				continue;
+			}
+			if !trimmed.is_empty() && !line.starts_with(' ') && !line.starts_with('\t') {
+				collecting_list = false;
+			}else if trimmed.is_empty() {
+				continue;
+			}else{
+				collecting_list = false;
+			}
+		}
+		let Some((key, value)) = trimmed.split_once(':') else { continue; };
+		if !key.eq_ignore_ascii_case("tags") && !key.eq_ignore_ascii_case("tag") {
+			continue;
+		}
+		let value = value.trim();
+		if value.is_empty() {
+			collecting_list = true;
+			continue;
+		}
+		if value.starts_with('[') && value.ends_with(']') {
+			for item in value[1..value.len() - 1].split(',') {
+				push_frontmatter_tag(&mut tags, item);
+			}
+		}else{
+			push_frontmatter_tag(&mut tags, value);
+		}
+	}
+	tags
+}
+
+fn push_frontmatter_tag(tags: &mut Vec<String>, value: &str) {
+	let tag = value
+		.trim()
+		.trim_matches(|ch| matches!(ch, '"' | '\''))
+		.trim_start_matches('#')
+		.trim();
+	if tag.is_empty() || tag.chars().any(char::is_whitespace) {
+		return;
+	}
+	tags.push(tag.to_string());
 }
 
 fn extract_tags(line: &str) -> Vec<String> {
@@ -342,6 +431,27 @@ mod tests {
 		assert!(index.search("untouched", 20).iter().any(|hit| hit.relative_path == "b.md"));
 		assert!(index.tags().iter().any(|tag| tag.name == "new"));
 		assert!(!index.tags().iter().any(|tag| tag.name == "old"));
+	}
+
+	#[test]
+	fn search_index_collects_frontmatter_tags() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(
+			temp.path().join("properties.md"),
+			"---\ntags:\n  - alpha\n  - project/test\ntag: beta\n---\nbody #inline\n",
+		).unwrap();
+		fs::write(
+			temp.path().join("inline-properties.md"),
+			"---\ntags: [gamma, #delta]\n---\ntext\n",
+		).unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let index = workspace.build_search_index().unwrap();
+		let tags = index.tags();
+
+		for expected in ["alpha", "project/test", "beta", "gamma", "delta", "inline"] {
+			assert!(tags.iter().any(|tag| tag.name.eq_ignore_ascii_case(expected)), "missing {expected}");
+		}
+		assert!(!index.search("tags:", 20).is_empty());
 	}
 
 	#[test]
