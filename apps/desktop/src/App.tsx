@@ -105,6 +105,20 @@ markdown.inline.ruler.before("emphasis", "quire_wiki_link", (state, silent) => {
 	return true;
 });
 
+markdown.inline.ruler.before("emphasis", "quire_highlight", (state, silent) => {
+	if(state.src.slice(state.pos, state.pos + 2) !== "=="){ return false; }
+	const end = state.src.indexOf("==", state.pos + 2);
+	if(end < 0 || end === state.pos + 2){ return false; }
+	if(!silent){
+		state.push("mark_open", "mark", 1);
+		const text = state.push("text", "", 0);
+		text.content = state.src.slice(state.pos + 2, end);
+		state.push("mark_close", "mark", -1);
+	}
+	state.pos = end + 2;
+	return true;
+});
+
 const PREVIEW_IMAGE_PLACEHOLDER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
 function isPreviewImageTarget(target: string): boolean {
@@ -318,6 +332,59 @@ function parseFrontMatterProperties(frontMatter: string): { properties: FrontMat
 	return { properties, complete };
 }
 
+function prepareObsidianPreviewBody(source: string): string {
+	const lines = source.split("\n");
+	let inFence = false;
+	let inComment = false;
+	const backtickFence = String.fromCharCode(96, 96, 96);
+
+	return lines.map(line => {
+		const trimmed = line.trimStart();
+		if(!inComment && (trimmed.startsWith(backtickFence) || trimmed.startsWith("~~~"))){
+			inFence = !inFence;
+			return line;
+		}
+		if(inFence){ return line; }
+
+		let output = "";
+		let index = 0;
+		let inlineTicks = 0;
+		while(index < line.length){
+			if(inComment){
+				const close = line.indexOf("%%", index);
+				if(close < 0){ return output; }
+				inComment = false;
+				index = close + 2;
+				continue;
+			}
+
+			if(line[index] === String.fromCharCode(96)){
+				let run = 1;
+				while(index + run < line.length && line[index + run] === String.fromCharCode(96)){ ++run; }
+				if(inlineTicks === 0){
+					inlineTicks = run;
+				}else if(inlineTicks === run){
+					inlineTicks = 0;
+				}
+				output += line.slice(index, index + run);
+				index += run;
+				continue;
+			}
+
+			if(inlineTicks === 0 && line.slice(index, index + 2) === "%%"){
+				inComment = true;
+				index += 2;
+				continue;
+			}
+
+			output += line[index];
+			++index;
+		}
+
+		return output.replace(/(?:^|\s)\^[A-Za-z0-9-]+\s*$/, "").replace(/[ \t]+$/, "");
+	}).join("\n");
+}
+
 function renderFrontMatterValue(key: string, value: string): string {
 	const escaped = escapePreviewHtml(value);
 	const normalizedKey = key.toLowerCase();
@@ -498,7 +565,7 @@ markdown.renderer.rules.list_item_open = (tokens, index, options, env, self) => 
 function renderPreview(source: string, sourceDocument?: string, allowDocumentEmbeds = true): string {
 	const parsed = splitFrontMatter(source);
 	const environment = {};
-	const tokens = markdown.parse(parsed.body, environment);
+	const tokens = markdown.parse(prepareObsidianPreviewBody(parsed.body), environment);
 	decoratePreviewTokens(tokens, parsed.lineOffset, sourceDocument, allowDocumentEmbeds);
 	decorateTagTokens(tokens);
 	decorateCalloutTokens(tokens);
@@ -514,7 +581,7 @@ type DocumentHeading = {
 
 function extractDocumentHeadings(source: string): DocumentHeading[] {
 	const parsed = splitFrontMatter(source);
-	const lines = parsed.body.split("\n");
+	const lines = prepareObsidianPreviewBody(parsed.body).split("\n");
 	const headings: DocumentHeading[] = [];
 	let inFence = false;
 	const backtickFence = String.fromCharCode(96, 96, 96);

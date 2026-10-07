@@ -1438,3 +1438,10 @@ button.primary {
 	color: #666;
 	font-size: 10px;
 }
+
+.markdown-preview mark {
+	padding: 0 0.12em;
+	border-radius: 2px;
+	background: #665d21;
+	color: inherit;
+}
