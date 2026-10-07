@@ -1596,7 +1596,7 @@ function App() {
 										}
 									>
 										<For each={entries()}>
-											{entry => <TreeEntry entry={entry} loadDirectory={loadDirectory} openDocument={openDocument} />}
+											{entry => <TreeEntry entry={entry} currentPath={document()?.relativePath} loadDirectory={loadDirectory} openDocument={openDocument} />}
 										</For>
 									</Show>
 								}
@@ -1917,11 +1917,28 @@ function App() {
 
 function TreeEntry(props: {
 	entry: WorkspaceEntry;
+	currentPath?: string;
 	loadDirectory: (relativePath: string) => Promise<WorkspaceEntry[]>;
 	openDocument: (relativePath: string) => Promise<void>;
 }) {
 	const [expanded, setExpanded] = createSignal(false);
 	const [children, setChildren] = createSignal<WorkspaceEntry[] | null>(null);
+
+	createEffect(() => {
+		const currentPath = props.currentPath;
+		if(props.entry.kind !== "directory" || !currentPath){ return; }
+		const prefix = props.entry.relativePath.replace(/\/$/, "") + "/";
+		if(!currentPath.startsWith(prefix)){ return; }
+		if(children() === null){
+			void props.loadDirectory(props.entry.relativePath)
+				.then(entries => {
+					setChildren(entries);
+					setExpanded(true);
+				});
+		}else{
+			setExpanded(true);
+		}
+	});
 
 	const activate = async () => {
 		if(props.entry.kind === "directory"){
@@ -1940,6 +1957,7 @@ function TreeEntry(props: {
 		<div>
 			<button
 				class={"tree-entry " + props.entry.kind}
+				classList={{ active: props.entry.kind === "markdown" && props.entry.relativePath === props.currentPath }}
 				onClick={() => void activate()}
 				title={props.entry.relativePath}
 			>
@@ -1951,7 +1969,7 @@ function TreeEntry(props: {
 			<Show when={expanded() && children()}>
 				<div class="tree-children">
 					<For each={children() ?? []}>
-						{entry => <TreeEntry entry={entry} loadDirectory={props.loadDirectory} openDocument={props.openDocument} />}
+						{entry => <TreeEntry entry={entry} currentPath={props.currentPath} loadDirectory={props.loadDirectory} openDocument={props.openDocument} />}
 					</For>
 				</div>
 			</Show>

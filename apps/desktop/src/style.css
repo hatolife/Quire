@@ -1085,3 +1085,13 @@ button.primary {
 .markdown-preview li.task-list-item[data-task-checked="true"] > :not(ul):not(ol) {
 	color: #888;
 }
+
+.tree-entry.active {
+	background: #303030;
+	color: #f0f0f0;
+	font-weight: 600;
+}
+
+.tree-entry.active .tree-icon {
+	color: #bbb;
+}
