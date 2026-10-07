@@ -1606,3 +1606,41 @@ button.primary {
 .layout-preset-entry button.danger:hover {
 	background: #4a2424;
 }
+
+.recent-workspaces {
+	width: min(620px, calc(100vw - 40px));
+	display: grid;
+	gap: 6px;
+	margin-top: 20px;
+}
+
+.recent-workspaces h2 {
+	margin: 0 0 4px;
+	font-size: 13px;
+	color: #999;
+}
+
+.recent-workspaces button {
+	overflow: hidden;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.recent-workspace-settings {
+	display: grid;
+	gap: 4px;
+}
+
+.recent-workspace-settings > div {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 4px;
+}
+
+.recent-workspace-settings > div > button:first-child {
+	overflow: hidden;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

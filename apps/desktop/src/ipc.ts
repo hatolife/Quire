@@ -98,6 +98,7 @@ export type DesktopSettings = {
 	explorerVisible: boolean;
 	rightPaneVisible: boolean;
 	lastWorkspace?: string | null;
+	recentWorkspaces: string[];
 	lastDocument?: string | null;
 	openDocuments: string[];
 	documentAutoSaveEnabled: boolean;

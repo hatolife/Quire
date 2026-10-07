@@ -826,6 +826,7 @@ function App() {
 	const assetCache = new Map<string, Promise<string>>();
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
+	const [recentWorkspaces, setRecentWorkspaces] = createSignal<string[]>([]);
 	const [entries, setEntries] = createSignal<WorkspaceEntry[]>([]);
 	const [document, setDocument] = createSignal<Document | null>(null);
 	const [openDocuments, setOpenDocuments] = createSignal<string[]>([]);
@@ -1360,6 +1361,7 @@ function App() {
 		explorerVisible();
 		rightPaneVisible();
 		workspace()?.root;
+		recentWorkspaces();
 		document()?.relativePath;
 		openDocuments();
 		documentAutoSaveEnabled();
@@ -1454,6 +1456,7 @@ function App() {
 		explorerVisible: explorerVisible(),
 		rightPaneVisible: rightPaneVisible(),
 		lastWorkspace: workspace()?.root ?? null,
+		recentWorkspaces: recentWorkspaces(),
 		lastDocument: document()?.relativePath ?? null,
 		openDocuments: openDocuments(),
 		documentAutoSaveEnabled: documentAutoSaveEnabled(),
@@ -1494,6 +1497,7 @@ function App() {
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
 				setExplorerVisible(settings.explorerVisible);
 				setRightPaneVisible(settings.rightPaneVisible);
+				setRecentWorkspaces(settings.recentWorkspaces ?? []);
 				setDocumentAutoSaveEnabled(settings.documentAutoSaveEnabled);
 				setDocumentAutoSaveDelayMs(Math.max(250, Math.min(10000, settings.documentAutoSaveDelayMs)));
 				setAutoSnapshotEnabled(settings.autoSnapshotEnabled);
@@ -1798,10 +1802,10 @@ function App() {
 		window.addEventListener("pointerup", handleUp, { once: true });
 	};
 
-	const chooseWorkspace = async () => {
+	const chooseWorkspace = async (requestedPath?: string) => {
 		const discardCurrent = dirty();
 		if(discardCurrent && !window.confirm("未保存の変更があります。破棄して別のWorkspaceを開きますか？")){ return; }
-		const selected = await open({
+		const selected = requestedPath ?? await open({
 			directory: true,
 			multiple: false,
 			title: "Quire Workspaceを開く",
@@ -1815,6 +1819,10 @@ function App() {
 		try{
 			const opened = await workspaceOpen(selected);
 			setWorkspace(opened.info);
+			setRecentWorkspaces(current => {
+				const normalized = opened.info.root.toLocaleLowerCase();
+				return [opened.info.root, ...current.filter(path => path.toLocaleLowerCase() !== normalized)].slice(0, 10);
+			});
 			setEntries(opened.entries);
 			setOpenDocuments([]);
 			setDocumentNavigation([]);
@@ -2526,6 +2534,12 @@ function App() {
 			enabled: workspace() !== null,
 			run: () => createFolder(),
 		},
+		...recentWorkspaces().map((path, index) => ({
+			id: "workspace.recent." + index,
+			title: "最近のWorkspace: " + path,
+			keywords: "workspace recent switch folder",
+			run: () => chooseWorkspace(path),
+		} as AppCommand)),
 		{
 			id: "document.create",
 			title: "新規Markdown",
@@ -2746,6 +2760,14 @@ function App() {
 						<h1>Quire</h1>
 						<p>通常のフォルダを、そのままWorkspaceとして扱います。</p>
 						<button class="primary" onClick={() => void chooseWorkspace()}>Workspaceを開く</button>
+						<Show when={recentWorkspaces().length > 0}>
+							<section class="recent-workspaces">
+								<h2>Recent Workspaces</h2>
+								<For each={recentWorkspaces()}>
+									{path => <button title={path} onClick={() => void chooseWorkspace(path)}>{path}</button>}
+								</For>
+							</section>
+						</Show>
 					</main>
 				}
 			>
@@ -3130,6 +3152,20 @@ function App() {
 								</label>
 								<div class="settings-summary">上限を約20%超えた時に自動整理します。.quireignoreでHistory/index対象外を指定できます。</div>
 								<button disabled={!workspace() || historyBusy()} onClick={() => void pruneHistoryNow()}>今すぐ保持上限を適用</button>
+							</section>
+							<section class="settings-section">
+								<h3>Recent Workspaces</h3>
+								<div class="recent-workspace-settings">
+									<For each={recentWorkspaces()}>
+										{path => (
+											<div>
+												<button title={path} onClick={() => void chooseWorkspace(path)}>{path}</button>
+												<button class="danger" onClick={() => setRecentWorkspaces(current => current.filter(value => value !== path))}>削除</button>
+											</div>
+										)}
+									</For>
+									<Show when={recentWorkspaces().length === 0}><div class="settings-summary">履歴はありません。</div></Show>
+								</div>
 							</section>
 							<section class="settings-section">
 								<h3>Layout</h3>
