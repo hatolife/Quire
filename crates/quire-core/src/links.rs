@@ -308,29 +308,43 @@ impl Workspace {
 					output.push_str(ending);
 					continue;
 				}
-				let wiki_rewritten = rewrite_links_in_line(line, |raw_target| {
-					self.resolve_wiki_target(&source_relative, raw_target)
-						.ok()
-						.flatten()
-						.as_deref()
-						== Some(from_relative.as_str())
-				}, &replacement);
-				let effective_source = if source_relative == from_relative_path {
+				let source_is_moved = source_relative == from_relative_path;
+				let wiki_rewritten = rewrite_wiki_links_in_line(line, |raw_target| {
+					let resolved = self.resolve_wiki_target(&source_relative, raw_target).ok().flatten();
+					if resolved.as_deref() == Some(from_relative.as_str()) {
+						if source_is_moved && (raw_target.contains('/') || raw_target.starts_with('.')) {
+							return Some(wiki_link_target(to_relative_path, to_relative_path));
+						}
+						return Some(replacement.clone());
+					}
+					if source_is_moved && (raw_target.contains('/') || raw_target.starts_with('.')) {
+						if let Some(resolved) = resolved {
+							return Some(wiki_link_target(to_relative_path, &resolved));
+						}
+					}
+					None
+				});
+				let effective_source = if source_is_moved {
 					to_relative_path
 				}else{
 					&source_relative
 				};
 				let rewritten = rewrite_markdown_links_in_line(&wiki_rewritten, |raw_target| {
-					let matches = self.resolve_markdown_target(&source_relative, raw_target)
-						.ok()
-						.flatten()
-						.as_deref()
-						== Some(from_relative.as_str());
-					if matches {
-						Some(markdown_link_target(effective_source, to_relative_path, raw_target))
-					}else{
-						None
+					let markdown_target = self.resolve_markdown_target(&source_relative, raw_target).ok().flatten();
+					if markdown_target.as_deref() == Some(from_relative.as_str()) {
+						return Some(markdown_link_target(effective_source, to_relative_path, raw_target));
 					}
+					if source_is_moved {
+						if let Some(local_target) = self.resolve_local_file_target(&source_relative, raw_target, true).ok().flatten() {
+							let final_target = if local_target == from_relative {
+								to_relative_path
+							}else{
+								local_target.as_str()
+							};
+							return Some(markdown_link_target(to_relative_path, final_target, raw_target));
+						}
+					}
+					None
 				});
 				changed |= rewritten != line;
 				output.push_str(&rewritten);
@@ -349,6 +363,21 @@ impl Workspace {
 	}
 
 	pub fn resolve_markdown_target(&self, source_relative_path: &str, raw_target: &str) -> Result<Option<String>, WorkspaceError> {
+		let Some(relative_path) = self.resolve_local_file_target(source_relative_path, raw_target, true)? else {
+			return Ok(None);
+		};
+		if !has_markdown_extension(Path::new(&relative_path)) {
+			return Ok(None);
+		}
+		Ok(Some(relative_path))
+	}
+
+	fn resolve_local_file_target(
+		&self,
+		source_relative_path: &str,
+		raw_target: &str,
+		markdown_fallback: bool,
+	) -> Result<Option<String>, WorkspaceError> {
 		let encoded_target = raw_target
 			.split('#')
 			.next()
@@ -364,6 +393,10 @@ impl Workspace {
 		if target.starts_with('/') || target.starts_with("//") || target.contains("://") {
 			return Ok(None);
 		}
+		let first_segment = target.split('/').next().unwrap_or("");
+		if first_segment.contains(':') {
+			return Ok(None);
+		}
 
 		let source = self.document_path(source_relative_path)?;
 		let parent = source
@@ -374,14 +407,14 @@ impl Workspace {
 			return Ok(None);
 		}
 		let mut candidate = parent.join(relative);
-		if !candidate.exists() && candidate.extension().is_none() {
+		if markdown_fallback && !candidate.exists() && candidate.extension().is_none() {
 			candidate.set_extension("md");
 		}
 		if !candidate.exists() {
 			return Ok(None);
 		}
 		let canonical = fs::canonicalize(candidate)?;
-		if !canonical.starts_with(&self.root) || !canonical.is_file() || !has_markdown_extension(&canonical) {
+		if !canonical.starts_with(&self.root) || !canonical.is_file() {
 			return Ok(None);
 		}
 		Ok(Some(portable_path(
@@ -492,10 +525,9 @@ fn wiki_target_for_path(relative_path: &str) -> String {
 	portable_path(&without_extension)
 }
 
-fn rewrite_links_in_line(
+fn rewrite_wiki_links_in_line(
 	line: &str,
-	mut matches_target: impl FnMut(&str) -> bool,
-	replacement: &str,
+	mut replacement_for: impl FnMut(&str) -> Option<String>,
 ) -> String {
 	let mut output = String::with_capacity(line.len());
 	let mut rest = line;
@@ -513,8 +545,8 @@ fn rewrite_links_in_line(
 		let mut heading_split = target_and_heading.splitn(2, '#');
 		let raw_target = heading_split.next().unwrap_or("").trim();
 		let heading = heading_split.next();
-		if matches_target(raw_target) {
-			output.push_str(replacement);
+		if let Some(replacement) = replacement_for(raw_target) {
+			output.push_str(&replacement);
 			if let Some(heading) = heading {
 				output.push('#');
 				output.push_str(heading);
@@ -531,6 +563,18 @@ fn rewrite_links_in_line(
 	}
 	output.push_str(rest);
 	output
+}
+
+fn wiki_link_target(source_relative_path: &str, target_relative_path: &str) -> String {
+	let source_parent = Path::new(source_relative_path).parent().unwrap_or_else(|| Path::new(""));
+	let target = Path::new(target_relative_path);
+	let relative = relative_path(source_parent, target);
+	let without_extension = if has_markdown_extension(&relative) {
+		relative.with_extension("")
+	}else{
+		relative
+	};
+	portable_path(&without_extension)
 }
 
 fn markdown_link_target(source_relative_path: &str, target_relative_path: &str, original_target: &str) -> String {
@@ -681,14 +725,10 @@ fn rewrite_markdown_links_in_line(
 	while search_from < line.len() {
 		let Some(relative_end) = line[search_from..].find("](") else { break; };
 		let label_end = search_from + relative_end;
-		let label_start = line[..label_end].rfind('[');
-		let is_image = label_start.is_some_and(|start| start > 0 && line.as_bytes()[start - 1] == b'!');
-		if !is_image {
-			if let Some((start, end)) = markdown_destination_range(line, label_end + 2) {
-				let target = &line[start..end];
-				if let Some(replacement) = replacement_for(target) {
-					replacements.push((start, end, replacement));
-				}
+		if let Some((start, end)) = markdown_destination_range(line, label_end + 2) {
+			let target = &line[start..end];
+			if let Some(replacement) = replacement_for(target) {
+				replacements.push((start, end, replacement));
 			}
 		}
 		search_from = label_end + 2;
@@ -936,6 +976,31 @@ mod tests {
 		let source = fs::read_to_string(temp.path().join("references").join("Source.md")).unwrap();
 		assert!(source.contains("[target](../archive/Renamed%20File.md?view=1#Heading)"));
 		assert!(source.contains("![image](../notes/Target%20File.md)"));
+	}
+
+	#[test]
+	fn moving_document_preserves_its_outbound_relative_links_and_assets() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir_all(temp.path().join("notes").join("_assets")).unwrap();
+		fs::create_dir_all(temp.path().join("archive")).unwrap();
+		fs::write(
+			temp.path().join("notes").join("Moved.md"),
+			"# Moved\n[other](Other.md#Section)\n![img](_assets/p.png)\n[[./Other#Section]]\n",
+		).unwrap();
+		fs::write(temp.path().join("notes").join("Other.md"), "# Other").unwrap();
+		fs::write(temp.path().join("notes").join("_assets").join("p.png"), b"png").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let moved = workspace.read_document("notes/Moved.md").unwrap();
+
+		let result = workspace
+			.move_document_with_wiki_links("notes/Moved.md", "archive/Moved.md", &moved.revision)
+			.unwrap();
+
+		assert_eq!(result.document.relative_path, "archive/Moved.md");
+		let content = fs::read_to_string(temp.path().join("archive").join("Moved.md")).unwrap();
+		assert!(content.contains("[other](../notes/Other.md#Section)"));
+		assert!(content.contains("![img](../notes/_assets/p.png)"));
+		assert!(content.contains("[[../notes/Other#Section]]"));
 	}
 
 	#[test]
