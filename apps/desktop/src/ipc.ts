@@ -205,3 +205,23 @@ export function assetImport(documentRelativePath: string, sourcePath: string) {
 export function assetRead(documentRelativePath: string, source: string) {
 	return invoke<string>("asset_read", { documentRelativePath, source });
 }
+
+export function browserNavigate(url: string) {
+	return invoke<void>("browser_navigate", { url });
+}
+
+export function browserReload() {
+	return invoke<void>("browser_reload");
+}
+
+export function browserBack() {
+	return invoke<void>("browser_back");
+}
+
+export function browserForward() {
+	return invoke<void>("browser_forward");
+}
+
+export function browserCurrentUrl() {
+	return invoke<string>("browser_current_url");
+}

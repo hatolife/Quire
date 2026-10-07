@@ -2,6 +2,13 @@ import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { Webview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import {
+	browserBack,
+	browserCurrentUrl,
+	browserForward,
+	browserNavigate,
+	browserReload,
+} from "../ipc";
 
 type Props = {
 	active: boolean;
@@ -27,6 +34,7 @@ export default function BrowserPane(props: Props) {
 	let browser: Webview | undefined;
 	let resizeObserver: ResizeObserver | undefined;
 	let generation = 0;
+	let urlPollTimer: number | undefined;
 	const [urlDraft, setUrlDraft] = createSignal("https://example.com/");
 	const [currentUrl, setCurrentUrl] = createSignal("https://example.com/");
 	const [busy, setBusy] = createSignal(false);
@@ -44,6 +52,19 @@ export default function BrowserPane(props: Props) {
 		browser = undefined;
 		if(current){
 			try{ await current.close(); }catch{}
+		}
+	};
+
+	const syncCurrentUrl = async () => {
+		if(!browser){ return; }
+		try{
+			const url = await browserCurrentUrl();
+			if(url){
+				setCurrentUrl(url);
+				setUrlDraft(url);
+			}
+		}catch{
+			// The WebView can disappear while closing or being recreated.
 		}
 	};
 
@@ -67,7 +88,10 @@ export default function BrowserPane(props: Props) {
 		next.once("tauri://created", () => {
 			if(ownGeneration !== generation){ return; }
 			setBusy(false);
+			setCurrentUrl(url);
+			setUrlDraft(url);
 			props.onStatus("Browser opened: " + url);
+			void syncCurrentUrl();
 			if(props.active){
 				void next.show().then(syncBounds);
 			}else{
@@ -81,14 +105,51 @@ export default function BrowserPane(props: Props) {
 		});
 	};
 
+	const navigateUrl = async (url: string) => {
+		setBusy(true);
+		try{
+			if(browser){
+				await browserNavigate(url);
+				setCurrentUrl(url);
+				setUrlDraft(url);
+			}else{
+				await createBrowser(url);
+			}
+			props.onStatus("Browser navigation: " + url);
+			window.setTimeout(() => { void syncCurrentUrl(); }, 250);
+		}catch(error){
+			props.onStatus("Browser navigation error: " + String(error));
+		}finally{
+			setBusy(false);
+		}
+	};
+
 	const navigate = async () => {
 		const url = normalizeUrl(urlDraft());
 		if(!url){
 			props.onStatus("Browser URL error: http/https URLを入力してください。");
 			return;
 		}
-		setCurrentUrl(url);
-		await createBrowser(url);
+		await navigateUrl(url);
+	};
+
+	const historyAction = async (action: "back" | "forward" | "reload") => {
+		if(!browser){ return; }
+		setBusy(true);
+		try{
+			if(action === "back"){
+				await browserBack();
+			}else if(action === "forward"){
+				await browserForward();
+			}else{
+				await browserReload();
+			}
+			window.setTimeout(() => { void syncCurrentUrl(); }, 250);
+		}catch(error){
+			props.onStatus("Browser " + action + " error: " + String(error));
+		}finally{
+			setBusy(false);
+		}
 	};
 
 	createEffect(() => {
@@ -97,16 +158,21 @@ export default function BrowserPane(props: Props) {
 		const normalized = normalizeUrl(requested);
 		if(!normalized){ return; }
 		setUrlDraft(normalized);
-		setCurrentUrl(normalized);
-		void createBrowser(normalized);
+		void navigateUrl(normalized);
 	});
 
 	createEffect(() => {
 		const active = props.active;
 		const current = browser;
+		if(urlPollTimer !== undefined){
+			window.clearInterval(urlPollTimer);
+			urlPollTimer = undefined;
+		}
 		if(!current){ return; }
 		if(active){
 			void current.show().then(syncBounds).catch(error => props.onStatus("Browser show error: " + String(error)));
+			void syncCurrentUrl();
+			urlPollTimer = window.setInterval(() => { void syncCurrentUrl(); }, 750);
 		}else{
 			void current.hide().catch(error => props.onStatus("Browser hide error: " + String(error)));
 		}
@@ -121,12 +187,16 @@ export default function BrowserPane(props: Props) {
 	onCleanup(() => {
 		++generation;
 		resizeObserver?.disconnect();
+		if(urlPollTimer !== undefined){ window.clearInterval(urlPollTimer); }
 		void closeBrowser();
 	});
 
 	return (
 		<div class="browser-pane-content">
 			<form class="browser-toolbar" onSubmit={event => { event.preventDefault(); void navigate(); }}>
+				<button type="button" title="戻る" disabled={!browser || busy()} onClick={() => void historyAction("back")}>←</button>
+				<button type="button" title="進む" disabled={!browser || busy()} onClick={() => void historyAction("forward")}>→</button>
+				<button type="button" title="再読込" disabled={!browser || busy()} onClick={() => void historyAction("reload")}>↻</button>
 				<input
 					type="url"
 					value={urlDraft()}

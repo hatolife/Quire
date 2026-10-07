@@ -893,3 +893,12 @@ button.primary {
 	justify-content: flex-end;
 	gap: 8px;
 }
+
+.browser-toolbar {
+	grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
+}
+
+.browser-toolbar > button {
+	min-width: 28px;
+	padding-inline: 6px;
+}

@@ -202,6 +202,56 @@ fn asset_import(
 	})
 }
 
+fn browser_webview(app: &tauri::AppHandle) -> Result<tauri::Webview, String> {
+	app.get_webview("browser-pane")
+		.ok_or_else(|| "Browser pane is not created.".to_string())
+}
+
+fn validated_browser_url(value: &str) -> Result<tauri::Url, String> {
+	let url = tauri::Url::parse(value).map_err(|error| format!("Invalid Browser URL: {error}"))?;
+	if !matches!(url.scheme(), "http" | "https") {
+		return Err(format!("Unsupported Browser URL scheme: {}", url.scheme()));
+	}
+	Ok(url)
+}
+
+#[tauri::command]
+fn browser_navigate(url: String, app: tauri::AppHandle) -> Result<(), String> {
+	let url = validated_browser_url(&url)?;
+	browser_webview(&app)?
+		.navigate(url)
+		.map_err(|error| format!("Browser navigation failed: {error}"))
+}
+
+#[tauri::command]
+fn browser_reload(app: tauri::AppHandle) -> Result<(), String> {
+	browser_webview(&app)?
+		.reload()
+		.map_err(|error| format!("Browser reload failed: {error}"))
+}
+
+#[tauri::command]
+fn browser_back(app: tauri::AppHandle) -> Result<(), String> {
+	browser_webview(&app)?
+		.eval("history.back()")
+		.map_err(|error| format!("Browser back failed: {error}"))
+}
+
+#[tauri::command]
+fn browser_forward(app: tauri::AppHandle) -> Result<(), String> {
+	browser_webview(&app)?
+		.eval("history.forward()")
+		.map_err(|error| format!("Browser forward failed: {error}"))
+}
+
+#[tauri::command]
+fn browser_current_url(app: tauri::AppHandle) -> Result<String, String> {
+	browser_webview(&app)?
+		.url()
+		.map(|url| url.to_string())
+		.map_err(|error| format!("Browser URL read failed: {error}"))
+}
+
 #[tauri::command]
 fn asset_read(
 	document_relative_path: String,
@@ -491,6 +541,11 @@ fn main() {
 			document_delete,
 			asset_import,
 			asset_read,
+			browser_navigate,
+			browser_reload,
+			browser_back,
+			browser_forward,
+			browser_current_url,
 			editor_start_document,
 			editor_input,
 			editor_resize,
