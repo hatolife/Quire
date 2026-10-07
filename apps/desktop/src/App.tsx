@@ -341,46 +341,15 @@ function cleanHeadingText(value: string): string {
 		.trim();
 }
 
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^{}()|[\]\\]/g, "\\$&");
+}
+
 function findBlockReferenceLine(source: string, fragment: string): number | undefined {
 	const wanted = decodeHeadingFragment(fragment).trim();
 	if(!wanted.startsWith("^") || wanted.length <= 1){ return undefined; }
 	const blockId = wanted.slice(1);
-	const escaped = blockId.replace(/[.*+?^{}()|[\]\\]/g, "\\function findHeadingLine(source: string, fragment: string): number | undefined {
-	const wanted = decodeHeadingFragment(fragment).trim();
-	if(!wanted || wanted.startsWith("^")){ return undefined; }
-	const wantedLower = wanted.toLocaleLowerCase();
-	const wantedSlug = headingSlug(wanted);
-	const lines = source.split("\n");
-	let inFence = false;
-	const backtickFence = String.fromCharCode(96, 96, 96);
-
-	const matches = (text: string) => {
-		const cleaned = cleanHeadingText(text);
-		return cleaned.toLocaleLowerCase() === wantedLower || headingSlug(cleaned) === wantedSlug;
-	};
-
-	for(let index = 0; index < lines.length; ++index){
-		const line = lines[index];
-		const trimmed = line.trimStart();
-		if(trimmed.startsWith(backtickFence) || trimmed.startsWith("~~~")){
-			inFence = !inFence;
-			continue;
-		}
-		if(inFence){ continue; }
-
-		const atx = line.match(/^[ \t]{0,3}#{1,6}[ \t]+(.+?)\s*$/);
-		if(atx && matches(atx[1])){ return index + 1; }
-
-		if(index + 1 < lines.length && line.trim()){
-			const underline = lines[index + 1];
-			if(/^[ \t]{0,3}(?:=+|-+)[ \t]*$/.test(underline) && matches(line)){
-				return index + 1;
-			}
-		}
-	}
-	return undefined;
-}");
-	const pattern = new RegExp("(?:^|\\s)\\^" + escaped + "\\s*$");
+	const pattern = new RegExp("(?:^|\\s)\\^" + escapeRegExp(blockId) + "\\s*$");
 	const lines = source.split("\n");
 	let inFence = false;
 	const backtickFence = String.fromCharCode(96, 96, 96);
@@ -445,8 +414,7 @@ function extractBlockReference(source: string, fragment: string): string | undef
 	const lines = source.split("\n");
 	const index = lineNumber - 1;
 	const blockId = decoded.startsWith("^") ? decoded.slice(1) : decoded;
-	const escaped = blockId.replace(/[.*+?^{}()|[\]\\]/g, "\\function linkFragment(value: string): string | undefined {");
-	const marker = new RegExp("\\s*\\^" + escaped + "\\s*$");
+	const marker = new RegExp("\\s*\\^" + escapeRegExp(blockId) + "\\s*$");
 	let start = index;
 	const currentWithoutMarker = lines[index].replace(marker, "");
 	if(currentWithoutMarker.trim() === ""){
