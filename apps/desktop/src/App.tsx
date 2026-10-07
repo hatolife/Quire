@@ -2003,6 +2003,21 @@ function App() {
 		return normalized.split("/").pop() || normalized;
 	};
 
+	const createFolder = async () => {
+		if(!workspace()){ return; }
+		const input = window.prompt("作成するfolderをWorkspaceからの相対pathで入力してください。", "新しいフォルダー");
+		if(input === null){ return; }
+		const relativePath = input.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+		if(!relativePath){ return; }
+		try{
+			const created = await workspaceEnsureDirectory(relativePath);
+			await refreshExplorer();
+			updateStatus("folderを作成しました: " + created, "info", "workspace");
+		}catch(error){
+			updateStatus("Folder create error: " + String(error), "error", "workspace");
+		}
+	};
+
 	const createDocument = async () => {
 		if(!workspace()){ return; }
 		if(!await prepareToLeaveDocument("未保存の変更があります。保存または破棄して新規Documentを作成しますか？")){ return; }
@@ -2505,6 +2520,13 @@ function App() {
 			run: () => chooseWorkspace(),
 		},
 		{
+			id: "workspace.folder.create",
+			title: "新規folder",
+			keywords: "folder directory create new",
+			enabled: workspace() !== null,
+			run: () => createFolder(),
+		},
+		{
 			id: "document.create",
 			title: "新規Markdown",
 			keywords: "new document note",
@@ -2739,6 +2761,7 @@ function App() {
 							<button class="explorer-mode" classList={{ active: explorerMode() === "outline" }} onClick={() => setExplorerMode("outline")}>Outline</button>
 							<span class="toolbar-spacer" />
 							<button class="pane-action" title="新規Markdown" onClick={() => void createDocument()}>＋</button>
+							<button class="pane-action" title="新規folder" onClick={() => void createFolder()}>F＋</button>
 							<button class="pane-action" title="Templateから新規" onClick={() => void openTemplatePicker()}>T＋</button>
 							<button class="pane-action" title="再読込" onClick={() => void refreshExplorer()}>↻</button>
 						</div>
