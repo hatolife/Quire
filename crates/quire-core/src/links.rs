@@ -152,6 +152,7 @@ impl Workspace {
 					let _ = self.move_document(to_relative_path, from_relative_path, None);
 					return Err(error);
 				}
+			}
 		}
 
 		let document = self.read_document(to_relative_path)?;
