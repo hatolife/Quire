@@ -113,6 +113,16 @@ impl Workspace {
 		}
 
 		let plans = self.plan_wiki_link_move(from_relative_path, to_relative_path)?;
+		let updated_links = plans
+			.iter()
+			.map(|plan| {
+				if plan.source_path == from_relative_path {
+					to_relative_path.to_string()
+				}else{
+					plan.source_path.clone()
+				}
+			})
+			.collect::<Vec<_>>();
 		let moved = self.move_document(from_relative_path, to_relative_path, Some(expected_revision))?;
 		let mut applied: Vec<(String, String, String)> = Vec::new();
 
@@ -145,8 +155,6 @@ impl Workspace {
 		}
 
 		let document = self.read_document(to_relative_path)?;
-		let updated_links = self
-			.plan_wiki_link_move_result_paths(from_relative_path, to_relative_path)?;
 		Ok(DocumentMove { document, updated_links })
 	}
 
@@ -205,27 +213,6 @@ impl Workspace {
 			}
 		}
 		Ok(plans)
-	}
-
-	fn plan_wiki_link_move_result_paths(&self, _from_relative_path: &str, to_relative_path: &str) -> Result<Vec<String>, WorkspaceError> {
-		let replacement = wiki_target_for_path(to_relative_path);
-		let mut files = Vec::new();
-		collect_markdown_files(&self.root, &mut files)?;
-		files.sort();
-		let mut updated = Vec::new();
-		for source in files {
-			let source_relative = portable_path(
-				source.strip_prefix(&self.root)
-					.map_err(|_| WorkspaceError::InvalidRelativePath(source.display().to_string()))?,
-			);
-			let content = fs::read_to_string(&source)?;
-			if content.lines().any(|line| extract_links(line).iter().any(|(target, _)| {
-				target.split('#').next().unwrap_or("").trim() == replacement
-			})) {
-				updated.push(source_relative);
-			}
-		}
-		Ok(updated)
 	}
 
 	pub fn resolve_wiki_target(&self, source_relative_path: &str, raw_target: &str) -> Result<Option<String>, WorkspaceError> {
