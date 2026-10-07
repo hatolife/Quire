@@ -5,7 +5,7 @@ type Props = {
 	documents: string[];
 	currentPath?: string;
 	indexReady: boolean;
-	onOpen: (path: string) => void | Promise<void>;
+	onOpen: (path: string) => void | Promise<unknown>;
 	onClose: () => void;
 };
 

@@ -4,7 +4,7 @@ import type { LinkGraph } from "../ipc";
 type Props = {
 	graph: LinkGraph | null;
 	currentPath?: string;
-	onOpen: (path: string) => void | Promise<void>;
+	onOpen: (path: string) => void | Promise<unknown>;
 };
 
 type PositionedNode = {

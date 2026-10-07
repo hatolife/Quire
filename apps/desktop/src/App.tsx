@@ -3310,7 +3310,7 @@ function TreeEntry(props: {
 	entry: WorkspaceEntry;
 	currentPath?: string;
 	loadDirectory: (relativePath: string) => Promise<WorkspaceEntry[]>;
-	openDocument: (relativePath: string) => Promise<void>;
+	openDocument: (relativePath: string) => Promise<unknown>;
 }) {
 	const [expanded, setExpanded] = createSignal(false);
 	const [children, setChildren] = createSignal<WorkspaceEntry[] | null>(null);
