@@ -4,7 +4,7 @@ mod settings;
 mod watcher;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use quire_core::{Backlink, Document, HistoryStore, SearchHit, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
+use quire_core::{AssetImport, Backlink, Document, HistoryStore, SearchHit, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
 use serde::Serialize;
 use std::path::Path;
 use tauri::ipc::Channel;
@@ -122,6 +122,19 @@ fn document_delete(
 }
 
 #[tauri::command]
+fn asset_import(
+	document_relative_path: String,
+	source_path: String,
+	state: tauri::State<'_, AppState>,
+) -> Result<AssetImport, String> {
+	with_workspace(&state, |workspace| {
+		workspace
+			.import_asset(&document_relative_path, source_path)
+			.map_err(|error| error.to_string())
+	})
+}
+
+#[tauri::command]
 fn asset_read(
 	document_relative_path: String,
 	source: String,
@@ -220,6 +233,11 @@ fn editor_set_top_line(line: u64, editor_state: tauri::State<'_, editor::EditorS
 #[tauri::command]
 fn editor_goto_line(line: u64, editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
 	editor::goto_line(line, &editor_state)
+}
+
+#[tauri::command]
+fn editor_insert_text(text: String, editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
+	editor::insert_text(text, &editor_state)
 }
 
 #[tauri::command]
@@ -334,6 +352,7 @@ fn main() {
 			document_create,
 			document_move,
 			document_delete,
+			asset_import,
 			asset_read,
 			editor_start_document,
 			editor_input,
@@ -343,6 +362,7 @@ fn main() {
 			editor_get_top_line,
 			editor_set_top_line,
 			editor_goto_line,
+			editor_insert_text,
 			editor_stop,
 			settings_load,
 			settings_save,

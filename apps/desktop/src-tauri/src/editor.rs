@@ -513,6 +513,38 @@ pub fn goto_line(line: u64, state: &EditorState) -> Result<(), String> {
 	Ok(())
 }
 
+pub fn insert_text(text: String, state: &EditorState) -> Result<(), String> {
+	if text.contains('\n') || text.contains('\r') {
+		return Err("editor_insert_text currently accepts one line.".to_string());
+	}
+	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
+	let process = slot.as_mut().ok_or_else(|| "Editor is not running.".to_string())?;
+	let cursor = process.request("nvim_win_get_cursor", vec![Value::from(0)])?;
+	let cursor = cursor.as_array().ok_or_else(|| "Neovim returned an invalid cursor.".to_string())?;
+	let row = cursor.first().and_then(value_u64).ok_or_else(|| "Neovim returned an invalid cursor row.".to_string())?;
+	let col = cursor.get(1).and_then(value_u64).ok_or_else(|| "Neovim returned an invalid cursor column.".to_string())?;
+	let zero_based_row = row.saturating_sub(1);
+	process.request(
+		"nvim_buf_set_text",
+		vec![
+			Value::from(0),
+			Value::from(zero_based_row),
+			Value::from(col),
+			Value::from(zero_based_row),
+			Value::from(col),
+			Value::Array(vec![Value::from(text.clone())]),
+		],
+	)?;
+	process.request(
+		"nvim_win_set_cursor",
+		vec![
+			Value::from(0),
+			Value::Array(vec![Value::from(row), Value::from(col + text.len() as u64)]),
+		],
+	)?;
+	Ok(())
+}
+
 pub fn stop(state: &EditorState) -> Result<(), String> {
 	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
 	if let Some(mut process) = slot.take() {

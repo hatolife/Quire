@@ -56,6 +56,13 @@ pub struct Document {
 	pub revision: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetImport {
+	pub relative_path: String,
+	pub markdown_source: String,
+}
+
 impl Workspace {
 	pub fn open(root: impl AsRef<Path>) -> Result<Self, WorkspaceError> {
 		let requested = root.as_ref();
@@ -224,6 +231,76 @@ impl Workspace {
 		Ok(())
 	}
 
+	pub fn import_asset(&self, document_relative_path: &str, source_path: impl AsRef<Path>) -> Result<AssetImport, WorkspaceError> {
+		let document = self.document_path(document_relative_path)?;
+		let document_parent = document
+			.parent()
+			.ok_or_else(|| WorkspaceError::InvalidRelativePath(document_relative_path.to_string()))?;
+		let source = source_path.as_ref();
+		if !source.is_file() {
+			return Err(WorkspaceError::InvalidRelativePath(source.display().to_string()));
+		}
+		let file_name = source
+			.file_name()
+			.ok_or_else(|| WorkspaceError::InvalidRelativePath(source.display().to_string()))?;
+		let file_name = file_name.to_string_lossy();
+		if file_name.is_empty() || file_name == "." || file_name == ".." {
+			return Err(WorkspaceError::InvalidRelativePath(source.display().to_string()));
+		}
+
+		let asset_directory = document_parent.join("_assets");
+		if asset_directory.exists() {
+			let canonical = fs::canonicalize(&asset_directory)?;
+			if !canonical.starts_with(&self.root) || !canonical.is_dir() {
+				return Err(WorkspaceError::InvalidRelativePath(asset_directory.display().to_string()));
+			}
+		}else{
+			fs::create_dir(&asset_directory)?;
+		}
+
+		let stem = Path::new(file_name.as_ref())
+			.file_stem()
+			.and_then(|value| value.to_str())
+			.unwrap_or("asset");
+		let extension = Path::new(file_name.as_ref())
+			.extension()
+			.and_then(|value| value.to_str());
+		let mut sequence = 1usize;
+		let (target, target_name) = loop {
+			let candidate_name = if sequence == 1 {
+				file_name.to_string()
+			}else if let Some(extension) = extension {
+				format!("{stem}-{sequence}.{extension}")
+			}else{
+				format!("{stem}-{sequence}")
+			};
+			let candidate = asset_directory.join(&candidate_name);
+			if !candidate.exists() {
+				break (candidate, candidate_name);
+			}
+			sequence += 1;
+		};
+
+		let mut input = fs::File::open(source)?;
+		let mut output = fs::OpenOptions::new()
+			.write(true)
+			.create_new(true)
+			.open(&target)?;
+		if let Err(error) = std::io::copy(&mut input, &mut output).and_then(|_| output.sync_all()) {
+			drop(output);
+			let _ = fs::remove_file(&target);
+			return Err(WorkspaceError::Io(error));
+		}
+
+		let relative = target
+			.strip_prefix(&self.root)
+			.map_err(|_| WorkspaceError::InvalidRelativePath(target.display().to_string()))?;
+		Ok(AssetImport {
+			relative_path: portable_path(relative),
+			markdown_source: format!("_assets/{}", markdown_url_path(&target_name)),
+		})
+	}
+
 	fn resolve_new_file(&self, relative_path: &str) -> Result<PathBuf, WorkspaceError> {
 		let relative = Path::new(relative_path);
 		if relative.as_os_str().is_empty()
@@ -268,6 +345,18 @@ impl Workspace {
 
 fn revision(bytes: &[u8]) -> String {
 	blake3::hash(bytes).to_hex().to_string()
+}
+
+fn markdown_url_path(value: &str) -> String {
+	let mut encoded = String::new();
+	for byte in value.as_bytes() {
+		if byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b'~') {
+			encoded.push(*byte as char);
+		}else{
+			encoded.push_str(&format!("%{byte:02X}"));
+		}
+	}
+	encoded
 }
 
 fn portable_path(path: &Path) -> String {
@@ -406,6 +495,28 @@ mod tests {
 			workspace.create_document("../escape.md", ""),
 			Err(WorkspaceError::InvalidRelativePath(_))
 		));
+	}
+
+	#[test]
+	fn import_asset_copies_bytes_and_avoids_overwrite() {
+		let temp = tempfile::tempdir().unwrap();
+		let workspace_root = temp.path().join("workspace");
+		let outside = temp.path().join("outside");
+		fs::create_dir(&workspace_root).unwrap();
+		fs::create_dir(&outside).unwrap();
+		fs::write(workspace_root.join("note.md"), "# Note").unwrap();
+		fs::write(outside.join("image one.png"), b"first").unwrap();
+		let workspace = Workspace::open(&workspace_root).unwrap();
+
+		let first = workspace.import_asset("note.md", outside.join("image one.png")).unwrap();
+		fs::write(outside.join("image one.png"), b"second").unwrap();
+		let second = workspace.import_asset("note.md", outside.join("image one.png")).unwrap();
+
+		assert_eq!(first.relative_path, "_assets/image one.png");
+		assert_eq!(first.markdown_source, "_assets/image%20one.png");
+		assert_eq!(second.relative_path, "_assets/image one-2.png");
+		assert_eq!(fs::read(workspace_root.join("_assets").join("image one.png")).unwrap(), b"first");
+		assert_eq!(fs::read(workspace_root.join("_assets").join("image one-2.png")).unwrap(), b"second");
 	}
 
 	#[test]

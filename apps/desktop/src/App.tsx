@@ -7,6 +7,7 @@ import BrowserPane from "./browser/BrowserPane";
 import CommandPalette, { type AppCommand } from "./commands/CommandPalette";
 import NeovimEditor from "./editor/NeovimEditor";
 import {
+	assetImport,
 	assetRead,
 	documentBacklinks,
 	documentCreate,
@@ -14,6 +15,7 @@ import {
 	documentMove,
 	documentOpen,
 	documentResolveWikiLink,
+	editorInsertText,
 	editorSave,
 	editorSetTopLine,
 	historyCreateSnapshot,
@@ -722,6 +724,30 @@ function App() {
 		await openDocument(hit.relativePath, hit.line);
 	};
 
+	const addImageAsset = async () => {
+		const current = document();
+		if(!current){ return; }
+		const selected = await open({
+			multiple: false,
+			directory: false,
+			title: "Markdownへ追加する画像を選択",
+			filters: [{
+				name: "Images",
+				extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "svg", "ico"],
+			}],
+		});
+		if(typeof selected !== "string"){ return; }
+		try{
+			const imported = await assetImport(current.relativePath, selected);
+			await editorInsertText("![](" + imported.markdownSource + ")");
+			assetCache.clear();
+			await refreshExplorer();
+			updateStatus("画像を追加しました: " + imported.relativePath, "info", "asset");
+		}catch(error){
+			updateStatus("Asset import error: " + String(error), "error", "asset");
+		}
+	};
+
 	const refreshBacklinks = async (relativePath: string) => {
 		try{
 			setBacklinks(await documentBacklinks(relativePath));
@@ -782,6 +808,13 @@ function App() {
 			keywords: "new document note",
 			enabled: workspace() !== null,
 			run: () => createDocument(),
+		},
+		{
+			id: "document.image.add",
+			title: "画像をDocumentへ追加",
+			keywords: "asset image attachment insert",
+			enabled: document() !== null,
+			run: () => addImageAsset(),
 		},
 		{
 			id: "document.save",
@@ -920,6 +953,7 @@ function App() {
 							<Show when={externalConflict()}><span class="external-conflict">外部変更</span></Show>
 							<span class="toolbar-spacer" />
 							<Show when={document()}>
+								<button class="pane-action" title="画像を追加" onClick={() => void addImageAsset()}>画像</button>
 								<button class="pane-action" title="移動・名前変更" disabled={dirty()} onClick={() => void moveCurrentDocument()}>移動</button>
 								<button class="pane-action danger" title="削除" disabled={dirty()} onClick={() => void deleteCurrentDocument()}>削除</button>
 							</Show>

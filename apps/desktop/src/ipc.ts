@@ -39,6 +39,11 @@ export type Backlink = {
 	preview: string;
 };
 
+export type AssetImport = {
+	relativePath: string;
+	markdownSource: string;
+};
+
 export type Snapshot = {
 	id: string;
 	timestamp: number;
@@ -112,6 +117,10 @@ export function editorSetTopLine(line: number) {
 	return invoke<void>("editor_set_top_line", { line });
 }
 
+export function editorInsertText(text: string) {
+	return invoke<void>("editor_insert_text", { text });
+}
+
 export function settingsLoad() {
 	return invoke<DesktopSettings>("settings_load");
 }
@@ -142,6 +151,10 @@ export function historyList(limit = 100) {
 
 export function historyRestoreFile(snapshotId: string, relativePath: string, expectedRevision?: string) {
 	return invoke<Document>("history_restore_file", { snapshotId, relativePath, expectedRevision });
+}
+
+export function assetImport(documentRelativePath: string, sourcePath: string) {
+	return invoke<AssetImport>("asset_import", { documentRelativePath, sourcePath });
 }
 
 export function assetRead(documentRelativePath: string, source: string) {
