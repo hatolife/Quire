@@ -138,6 +138,10 @@ export function editorSetTopLine(line: number) {
 	return invoke<void>("editor_set_top_line", { line });
 }
 
+export function editorGotoLine(line: number) {
+	return invoke<void>("editor_goto_line", { line });
+}
+
 export function editorInsertText(text: string) {
 	return invoke<void>("editor_insert_text", { text });
 }

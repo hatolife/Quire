@@ -16,6 +16,7 @@ import {
 	documentOpen,
 	documentResolveMarkdownLink,
 	documentResolveWikiLink,
+	editorGotoLine,
 	editorInsertText,
 	editorReplaceContent,
 	editorSave,
@@ -114,6 +115,76 @@ function renderPreview(source: string): string {
 function contentForEditor(content: string): string {
 	const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 	return normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized;
+}
+
+function decodeHeadingFragment(fragment: string): string {
+	const raw = fragment.startsWith("#") ? fragment.slice(1) : fragment;
+	try{
+		return decodeURIComponent(raw);
+	}catch{
+		return raw;
+	}
+}
+
+function headingSlug(value: string): string {
+	return value
+		.normalize("NFKC")
+		.toLocaleLowerCase()
+		.trim()
+		.replace(/[^\p{L}\p{N}\s_-]/gu, "")
+		.replace(/[\s_]+/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-|-$/g, "");
+}
+
+function cleanHeadingText(value: string): string {
+	return value
+		.replace(/\s+#+\s*$/, "")
+		.replace(/[*_~]/g, "")
+		.replace(new RegExp(String.fromCharCode(96), "g"), "")
+		.trim();
+}
+
+function findHeadingLine(source: string, fragment: string): number | undefined {
+	const wanted = decodeHeadingFragment(fragment).trim();
+	if(!wanted || wanted.startsWith("^")){ return undefined; }
+	const wantedLower = wanted.toLocaleLowerCase();
+	const wantedSlug = headingSlug(wanted);
+	const lines = source.split("\n");
+	let inFence = false;
+	const backtickFence = String.fromCharCode(96, 96, 96);
+
+	const matches = (text: string) => {
+		const cleaned = cleanHeadingText(text);
+		return cleaned.toLocaleLowerCase() === wantedLower || headingSlug(cleaned) === wantedSlug;
+	};
+
+	for(let index = 0; index < lines.length; ++index){
+		const line = lines[index];
+		const trimmed = line.trimStart();
+		if(trimmed.startsWith(backtickFence) || trimmed.startsWith("~~~")){
+			inFence = !inFence;
+			continue;
+		}
+		if(inFence){ continue; }
+
+		const atx = line.match(/^[ \t]{0,3}#{1,6}[ \t]+(.+?)\s*$/);
+		if(atx && matches(atx[1])){ return index + 1; }
+
+		if(index + 1 < lines.length && line.trim()){
+			const underline = lines[index + 1];
+			if(/^[ \t]{0,3}(?:=+|-+)[ \t]*$/.test(underline) && matches(line)){
+				return index + 1;
+			}
+		}
+	}
+	return undefined;
+}
+
+function linkFragment(value: string): string | undefined {
+	const index = value.indexOf("#");
+	if(index < 0 || index + 1 >= value.length){ return undefined; }
+	return value.slice(index + 1);
 }
 
 function App() {
@@ -891,19 +962,40 @@ function App() {
 		}
 	};
 
-	const openDocument = async (relativePath: string, line?: number) => {
+	const openDocument = async (relativePath: string, line?: number, heading?: string) => {
+		const current = document();
+		if(current?.relativePath === relativePath && heading){
+			const headingLine = findHeadingLine(draft(), heading);
+			if(headingLine !== undefined){
+				try{
+					await editorGotoLine(headingLine);
+					updateStatus(relativePath + "#" + decodeHeadingFragment(heading), "info", "links");
+				}catch(error){
+					updateStatus("Heading navigation error: " + String(error), "error", "links");
+				}
+			}else{
+				updateStatus("見出しが見つかりません: #" + decodeHeadingFragment(heading), "warn", "links");
+			}
+			return;
+		}
 		if(dirty() && !window.confirm("未保存の変更があります。破棄して別の文書を開きますか？")){ return; }
 		try{
 			const opened = await documentOpen(relativePath);
+			const content = contentForEditor(opened.content);
+			const targetLine = line ?? (heading ? findHeadingLine(content, heading) : undefined);
 			setDocument(opened);
-			setDraft(contentForEditor(opened.content));
+			setDraft(content);
 			setExternalConflict(false);
-			setInitialEditorLine(line);
-			if(line !== undefined || document()?.relativePath === relativePath){
+			setInitialEditorLine(targetLine);
+			if(targetLine !== undefined || document()?.relativePath === relativePath){
 				setEditorSession(value => value + 1);
 			}
 			void refreshBacklinks(relativePath);
-			updateStatus(relativePath, "info", "document");
+			if(heading && targetLine === undefined){
+				updateStatus(relativePath + " を開きましたが見出しが見つかりません: #" + decodeHeadingFragment(heading), "warn", "links");
+			}else{
+				updateStatus(relativePath, "info", "document");
+			}
 		}catch(error){
 			updateStatus("Document open error: " + String(error), "error", "document");
 		}
@@ -957,13 +1049,14 @@ function App() {
 		if(href.startsWith("quire-wiki:")){
 			event.preventDefault();
 			const target = decodeURIComponent(href.slice("quire-wiki:".length));
+			const heading = linkFragment(target);
 			try{
 				const resolved = await documentResolveWikiLink(current.relativePath, target);
 				if(!resolved){
 					updateStatus("未解決Wiki Link: [[" + target + "]]", "warn", "links");
 					return;
 				}
-				await openDocument(resolved);
+				await openDocument(resolved, undefined, heading);
 			}catch(error){
 				updateStatus("Wiki Link error: " + String(error), "error", "links");
 			}
@@ -980,7 +1073,7 @@ function App() {
 
 		if(href.startsWith("#")){
 			event.preventDefault();
-			updateStatus("Document内heading linkは未対応です: " + href, "warn", "links");
+			await openDocument(current.relativePath, undefined, href.slice(1));
 			return;
 		}
 
@@ -991,14 +1084,14 @@ function App() {
 		}
 
 		event.preventDefault();
-		const decoded = decodeAssetSource(href);
+		const heading = linkFragment(href);
 		try{
-			const resolved = await documentResolveMarkdownLink(current.relativePath, decoded);
+			const resolved = await documentResolveMarkdownLink(current.relativePath, href);
 			if(!resolved){
 				updateStatus("Workspace内Markdownとして解決できません: " + href, "warn", "links");
 				return;
 			}
-			await openDocument(resolved);
+			await openDocument(resolved, undefined, heading);
 		}catch(error){
 			updateStatus("Markdown link error: " + String(error), "error", "links");
 		}
