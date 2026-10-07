@@ -21,6 +21,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  core-test:
+    name: Quire core tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Quire core
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: . -> target
+
+      - name: Test quire-core
+        run: cargo test -p quire-core
+
   desktop-build:
     name: Quire desktop build
     runs-on: windows-latest
@@ -40,12 +57,9 @@ jobs:
         with:
           workspaces: . -> target
 
-      - name: Test quire-core
-        run: cargo test -p quire-core
-
       - name: Install desktop frontend dependencies
         working-directory: apps/desktop
-        run: npm install
+        run: npm install --no-audit --no-fund
 
       - name: Build Quire desktop executable
         working-directory: apps/desktop
