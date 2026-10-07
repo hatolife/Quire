@@ -38,39 +38,29 @@ pub struct LinkIndex {
 
 impl LinkIndex {
 	pub fn build(workspace: &Workspace) -> Result<Self, WorkspaceError> {
-		let mut files = scan::markdown_files(&workspace.root).map_err(WorkspaceError::Io)?;
-		files.sort();
+		let sources = scan::markdown_sources(&workspace.root).map_err(WorkspaceError::Io)?;
+		Self::from_sources(workspace, &sources)
+	}
 
-		let mut documents = Vec::with_capacity(files.len());
-		for file in files {
-			let relative = portable_path(
-				file.strip_prefix(&workspace.root)
-					.map_err(|_| WorkspaceError::InvalidRelativePath(file.display().to_string()))?,
-			);
-			documents.push((relative, file));
-		}
-
+	pub(crate) fn from_sources(
+		workspace: &Workspace,
+		sources: &[scan::MarkdownSource],
+	) -> Result<Self, WorkspaceError> {
 		let mut aliases_by_document = BTreeMap::new();
-		for (relative, file) in &documents {
-			let content = match fs::read_to_string(file) {
-				Ok(content) => content,
-				Err(error) if error.kind() == std::io::ErrorKind::InvalidData => continue,
-				Err(error) => return Err(WorkspaceError::Io(error)),
-			};
-			aliases_by_document.insert(relative.clone(), extract_frontmatter_aliases(&content));
+		for source in sources {
+			aliases_by_document.insert(
+				source.relative_path.clone(),
+				extract_frontmatter_aliases(&source.content),
+			);
 		}
 		let wiki_by_stem = build_stem_map(aliases_by_document.keys());
 		let wiki_by_alias = build_alias_map(&aliases_by_document);
 
 		let mut backlinks: HashMap<String, Vec<Backlink>> = HashMap::new();
-		for (source_relative, source) in &documents {
-			let content = match fs::read_to_string(source) {
-				Ok(content) => content,
-				Err(error) if error.kind() == std::io::ErrorKind::InvalidData => continue,
-				Err(error) => return Err(WorkspaceError::Io(error)),
-			};
+		for source in sources {
+			let source_relative = &source.relative_path;
 			let mut in_fence = false;
-			for (line_index, line) in content.lines().enumerate() {
+			for (line_index, line) in source.content.lines().enumerate() {
 				if is_fence(line) {
 					in_fence = !in_fence;
 					continue;
@@ -81,12 +71,22 @@ impl LinkIndex {
 
 				let mut targets = HashSet::new();
 				for (raw_target, _) in extract_links(line) {
-					if let Some(target) = resolve_indexed_wiki_target(workspace, source_relative, &raw_target, &wiki_by_stem, &wiki_by_alias) {
+					if let Some(target) = resolve_indexed_wiki_target(
+						workspace,
+						source_relative,
+						&raw_target,
+						&wiki_by_stem,
+						&wiki_by_alias,
+					) {
 						targets.insert(target);
 					}
 				}
 				for raw_target in extract_markdown_targets(line) {
-					if let Some(target) = workspace.resolve_markdown_target(source_relative, raw_target).ok().flatten() {
+					if let Some(target) = workspace
+						.resolve_markdown_target(source_relative, raw_target)
+						.ok()
+						.flatten()
+					{
 						targets.insert(target);
 					}
 				}
@@ -105,7 +105,7 @@ impl LinkIndex {
 		}
 
 		Ok(Self {
-			document_count: documents.len(),
+			document_count: sources.len(),
 			wiki_by_stem,
 			wiki_by_alias,
 			aliases_by_document,

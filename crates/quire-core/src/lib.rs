@@ -16,3 +16,13 @@ pub use workspace::{
 	WorkspaceError,
 	WorkspaceInfo,
 };
+
+
+impl Workspace {
+	pub fn build_indexes(&self) -> Result<(SearchIndex, LinkIndex), WorkspaceError> {
+		let sources = scan::markdown_sources(&self.root).map_err(WorkspaceError::Io)?;
+		let search = SearchIndex::from_sources(&sources);
+		let links = LinkIndex::from_sources(self, &sources)?;
+		Ok((search, links))
+	}
+}

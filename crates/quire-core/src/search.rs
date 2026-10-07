@@ -49,33 +49,22 @@ pub struct SearchIndex {
 
 impl SearchIndex {
 	pub fn build(workspace: &Workspace) -> Result<Self, WorkspaceError> {
-		let mut files = scan::markdown_files(&workspace.root).map_err(WorkspaceError::Io)?;
-		files.sort();
+		let sources = scan::markdown_sources(&workspace.root).map_err(WorkspaceError::Io)?;
+		Ok(Self::from_sources(&sources))
+	}
 
-		let mut documents = Vec::with_capacity(files.len());
+	pub(crate) fn from_sources(sources: &[scan::MarkdownSource]) -> Self {
+		let mut documents = Vec::with_capacity(sources.len());
 		let mut tag_counts: HashMap<String, (String, usize)> = HashMap::new();
-		for path in files {
-			let relative = path
-				.strip_prefix(&workspace.root)
-				.map_err(|_| WorkspaceError::InvalidRelativePath(path.display().to_string()))?;
-			let relative_path = portable_path(relative);
-			let bytes = match fs::read(&path) {
-				Ok(bytes) => bytes,
-				Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
-				Err(error) => return Err(WorkspaceError::Io(error)),
-			};
-			let content = match String::from_utf8(bytes) {
-				Ok(content) => content,
-				Err(_) => continue,
-			};
-			for tag in extract_frontmatter_tags(&content) {
+		for source in sources {
+			for tag in extract_frontmatter_tags(&source.content) {
 				let key = tag.to_lowercase();
 				let entry = tag_counts.entry(key).or_insert_with(|| (tag, 0));
 				entry.1 += 1;
 			}
 			let mut in_fence = false;
-			let body_start = frontmatter_body_start(&content);
-			for line in content[body_start..].lines() {
+			let body_start = frontmatter_body_start(&source.content);
+			for line in source.content[body_start..].lines() {
 				if is_fence(line) {
 					in_fence = !in_fence;
 					continue;
@@ -89,14 +78,14 @@ impl SearchIndex {
 					entry.1 += 1;
 				}
 			}
-			documents.push(indexed_document(relative_path, &content));
+			documents.push(indexed_document(source.relative_path.clone(), &source.content));
 		}
 		let mut tags = tag_counts
 			.into_values()
 			.map(|(name, count)| TagInfo { name, count })
 			.collect::<Vec<_>>();
 		tags.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
-		Ok(Self { documents, tags })
+		Self { documents, tags }
 	}
 
 	pub fn refresh_document(&mut self, workspace: &Workspace, relative_path: &str) -> Result<(), WorkspaceError> {

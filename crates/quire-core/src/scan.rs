@@ -1,4 +1,5 @@
 use ignore::WalkBuilder;
+use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -40,6 +41,40 @@ pub(crate) fn markdown_files(root: &Path) -> Result<Vec<PathBuf>, io::Error> {
 	Ok(files)
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct MarkdownSource {
+	pub relative_path: String,
+	pub content: String,
+}
+
+pub(crate) fn markdown_sources(root: &Path) -> Result<Vec<MarkdownSource>, io::Error> {
+	let mut files = markdown_files(root)?;
+	files.sort();
+
+	let mut sources = Vec::with_capacity(files.len());
+	for path in files {
+		let relative = path
+			.strip_prefix(root)
+			.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?
+			.to_string_lossy()
+			.replace('\\', "/");
+		let bytes = match fs::read(&path) {
+			Ok(bytes) => bytes,
+			Err(error) if error.kind() == io::ErrorKind::PermissionDenied => continue,
+			Err(error) => return Err(error),
+		};
+		let content = match String::from_utf8(bytes) {
+			Ok(content) => content,
+			Err(_) => continue,
+		};
+		sources.push(MarkdownSource {
+			relative_path: relative,
+			content,
+		});
+	}
+	Ok(sources)
+}
+
 fn is_markdown(path: &Path) -> bool {
 	path.extension()
 		.and_then(|extension| extension.to_str())
@@ -76,6 +111,20 @@ mod tests {
 		assert!(relative.contains(&"kept.md".to_string()));
 		assert!(!relative.contains(&"ignored.md".to_string()));
 		assert!(!relative.contains(&"generated/nested.md".to_string()));
+	}
+
+	#[test]
+	fn markdown_sources_read_utf8_once_and_keep_relative_paths() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir_all(temp.path().join("notes")).unwrap();
+		fs::write(temp.path().join("notes").join("a.md"), "alpha").unwrap();
+		fs::write(temp.path().join("invalid.md"), [0xff, 0xfe]).unwrap();
+
+		let sources = markdown_sources(temp.path()).unwrap();
+
+		assert_eq!(sources.len(), 1);
+		assert_eq!(sources[0].relative_path, "notes/a.md");
+		assert_eq!(sources[0].content, "alpha");
 	}
 
 	#[test]

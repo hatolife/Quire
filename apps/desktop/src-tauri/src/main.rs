@@ -102,8 +102,7 @@ async fn workspace_reindex(app: tauri::AppHandle) -> Result<Option<usize>, Strin
 
 	let rebuilt = tauri::async_runtime::spawn_blocking(move || -> Result<(SearchIndex, LinkIndex, usize), String> {
 		let workspace = Workspace::open(root).map_err(|error| error.to_string())?;
-		let rebuilt_search = workspace.build_search_index().map_err(|error| error.to_string())?;
-		let rebuilt_links = workspace.build_link_index().map_err(|error| error.to_string())?;
+		let (rebuilt_search, rebuilt_links) = workspace.build_indexes().map_err(|error| error.to_string())?;
 		let count = rebuilt_search.document_count();
 		Ok((rebuilt_search, rebuilt_links, count))
 	})
