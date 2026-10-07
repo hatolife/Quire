@@ -538,6 +538,46 @@ pub fn replace_content(content: String, state: &EditorState) -> Result<(), Strin
 	Ok(())
 }
 
+pub fn toggle_task(line: u64, checked: bool, state: &EditorState) -> Result<(), String> {
+	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
+	let process = slot.as_mut().ok_or_else(|| "Editor is not running.".to_string())?;
+	let value = process.request(
+		"nvim_buf_get_lines",
+		vec![
+			Value::from(0),
+			Value::from(line),
+			Value::from(line.saturating_add(1)),
+			Value::from(true),
+		],
+	)?;
+	let lines = value.as_array().ok_or_else(|| "Neovim returned invalid task line data.".to_string())?;
+	let original = lines
+		.first()
+		.and_then(Value::as_str)
+		.ok_or_else(|| "Task line does not exist.".to_string())?;
+
+	let markers = ["[ ]", "[x]", "[X]"];
+	let marker = markers
+		.iter()
+		.filter_map(|marker| original.find(marker).map(|index| (index, *marker)))
+		.min_by_key(|(index, _)| *index)
+		.ok_or_else(|| "Task marker was not found on the requested line.".to_string())?;
+	let replacement = if checked { "[x]" } else { "[ ]" };
+	let mut updated = original.to_string();
+	updated.replace_range(marker.0..marker.0 + marker.1.len(), replacement);
+	process.request(
+		"nvim_buf_set_lines",
+		vec![
+			Value::from(0),
+			Value::from(line),
+			Value::from(line.saturating_add(1)),
+			Value::from(true),
+			Value::Array(vec![Value::from(updated)]),
+		],
+	)?;
+	Ok(())
+}
+
 pub fn insert_text(text: String, state: &EditorState) -> Result<(), String> {
 	if text.contains('\n') || text.contains('\r') {
 		return Err("editor_insert_text currently accepts one line.".to_string());

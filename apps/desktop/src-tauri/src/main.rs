@@ -391,6 +391,11 @@ fn editor_goto_line(line: u64, editor_state: tauri::State<'_, editor::EditorStat
 }
 
 #[tauri::command]
+fn editor_toggle_task(line: u64, checked: bool, editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
+	editor::toggle_task(line, checked, &editor_state)
+}
+
+#[tauri::command]
 fn editor_insert_text(text: String, editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
 	editor::insert_text(text, &editor_state)
 }
@@ -627,6 +632,7 @@ fn main() {
 			editor_get_top_line,
 			editor_set_top_line,
 			editor_goto_line,
+			editor_toggle_task,
 			editor_insert_text,
 			editor_replace_content,
 			editor_stop,

@@ -158,6 +158,10 @@ export function editorGotoLine(line: number) {
 	return invoke<void>("editor_goto_line", { line });
 }
 
+export function editorToggleTask(line: number, checked: boolean) {
+	return invoke<void>("editor_toggle_task", { line, checked });
+}
+
 export function editorInsertText(text: string) {
 	return invoke<void>("editor_insert_text", { text });
 }

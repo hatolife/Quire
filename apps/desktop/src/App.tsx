@@ -21,6 +21,7 @@ import {
 	editorReplaceContent,
 	editorSave,
 	editorSetTopLine,
+	editorToggleTask,
 	historyCreateSnapshot,
 	historyList,
 	historyListDocuments,
@@ -245,7 +246,7 @@ function decorateCalloutTokens(tokens: any[]) {
 	}
 }
 
-function decorateTaskListTokens(tokens: any[]) {
+function decorateTaskListTokens(tokens: any[], interactive: boolean) {
 	for(let index = 0; index < tokens.length; ++index){
 		if(tokens[index].type !== "list_item_open"){ continue; }
 		let depth = 1;
@@ -265,6 +266,7 @@ function decorateTaskListTokens(tokens: any[]) {
 		const checked = match[1].toLowerCase() === "x";
 		tokens[index].attrJoin("class", "task-list-item");
 		tokens[index].attrSet("data-task-checked", checked ? "true" : "false");
+		tokens[index].attrSet("data-task-interactive", interactive ? "true" : "false");
 		inline.content = inline.content.slice(match[0].length);
 
 		if(Array.isArray(inline.children)){
@@ -280,13 +282,29 @@ function decorateTaskListTokens(tokens: any[]) {
 	}
 }
 
+const defaultListItemOpen = markdown.renderer.rules.list_item_open
+	?? ((tokens: any[], index: number, options: any, _env: any, self: any) => self.renderToken(tokens, index, options));
+markdown.renderer.rules.list_item_open = (tokens, index, options, env, self) => {
+	const token = tokens[index];
+	const rendered = defaultListItemOpen(tokens, index, options, env, self);
+	const checked = token.attrGet("data-task-checked");
+	if(checked === null){ return rendered; }
+	const sourceLine = token.attrGet("data-source-line") ?? "";
+	const interactive = token.attrGet("data-task-interactive") === "true";
+	return rendered
+		+ '<input class="quire-task-checkbox" type="checkbox" data-quire-task-line="' + escapePreviewHtml(sourceLine) + '"'
+		+ (checked === "true" ? " checked" : "")
+		+ (interactive ? "" : " disabled")
+		+ ' aria-label="Task">';
+};
+
 function renderPreview(source: string, sourceDocument?: string, allowDocumentEmbeds = true): string {
 	const parsed = splitFrontMatter(source);
 	const environment = {};
 	const tokens = markdown.parse(parsed.body, environment);
 	decoratePreviewTokens(tokens, parsed.lineOffset, sourceDocument, allowDocumentEmbeds);
 	decorateCalloutTokens(tokens);
-	decorateTaskListTokens(tokens);
+	decorateTaskListTokens(tokens, allowDocumentEmbeds);
 	return renderFrontMatter(parsed.frontMatter) + markdown.renderer.render(tokens, markdown.options, environment);
 }
 
@@ -1394,6 +1412,23 @@ function App() {
 	};
 
 	const handlePreviewClick = async (event: MouseEvent) => {
+		const task = (event.target as HTMLElement).closest<HTMLInputElement>("input[data-quire-task-line]");
+		if(task){
+			if(task.disabled){ return; }
+			const line = Number.parseInt(task.dataset.quireTaskLine ?? "", 10);
+			if(!Number.isFinite(line)){
+				task.checked = !task.checked;
+				return;
+			}
+			try{
+				await editorToggleTask(line, task.checked);
+				updateStatus("Taskを更新しました", "info", "editor");
+			}catch(error){
+				task.checked = !task.checked;
+				updateStatus("Task update error: " + String(error), "error", "editor");
+			}
+			return;
+		}
 		const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href]");
 		if(!anchor){ return; }
 		const href = anchor.getAttribute("href") ?? "";

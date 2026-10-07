@@ -1095,3 +1095,20 @@ button.primary {
 .tree-entry.active .tree-icon {
 	color: #bbb;
 }
+
+.markdown-preview li.task-list-item::before {
+	content: none;
+}
+
+.markdown-preview li.task-list-item > .quire-task-checkbox {
+	position: absolute;
+	right: calc(100% + 0.35em);
+	top: 0.32em;
+	margin: 0;
+	cursor: pointer;
+}
+
+.markdown-preview li.task-list-item > .quire-task-checkbox:disabled {
+	cursor: default;
+	opacity: 0.65;
+}
