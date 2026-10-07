@@ -819,6 +819,7 @@ function App() {
 	let searchReindexPending = false;
 	let pendingWatchChanges: Array<{ change: "create" | "modify" | "remove" | "other"; paths: string[] }> = [];
 	let previewResolveGeneration = 0;
+	let focusModeRestore: { explorer: boolean; right: boolean } | undefined;
 	const assetCache = new Map<string, Promise<string>>();
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
@@ -834,6 +835,7 @@ function App() {
 	const [editorRatio, setEditorRatio] = createSignal(0.5);
 	const [explorerVisible, setExplorerVisible] = createSignal(true);
 	const [rightPaneVisible, setRightPaneVisible] = createSignal(true);
+	const [focusMode, setFocusMode] = createSignal(false);
 	const [logOpen, setLogOpen] = createSignal(false);
 	const [logs, setLogs] = createSignal<LogEntry[]>([]);
 	const [searchQuery, setSearchQuery] = createSignal("");
@@ -1162,6 +1164,23 @@ function App() {
 			setQuickOpenDocuments([]);
 			updateStatus("Quick Open error: " + String(error), "error", "index");
 		}
+	};
+
+	const toggleFocusMode = () => {
+		if(focusMode()){
+			setExplorerVisible(focusModeRestore?.explorer ?? true);
+			setRightPaneVisible(focusModeRestore?.right ?? true);
+			focusModeRestore = undefined;
+			setFocusMode(false);
+			return;
+		}
+		focusModeRestore = {
+			explorer: explorerVisible(),
+			right: rightPaneVisible(),
+		};
+		setExplorerVisible(false);
+		setRightPaneVisible(false);
+		setFocusMode(true);
 	};
 
 	const resetPaneLayout = () => {
@@ -1502,6 +1521,11 @@ function App() {
 			if(!event.shiftKey && key === "p"){
 				event.preventDefault();
 				void openQuickOpen();
+				return;
+			}
+			if(event.shiftKey && key === "e"){
+				event.preventDefault();
+				toggleFocusMode();
 				return;
 			}
 			if(event.shiftKey && key === "f"){
@@ -2411,6 +2435,13 @@ function App() {
 			},
 		},
 		{
+			id: "layout.focus.toggle",
+			title: focusMode() ? "Focus Modeを終了" : "Focus Mode",
+			keywords: "layout focus distraction free editor",
+			shortcut: "Ctrl+Shift+E",
+			run: () => toggleFocusMode(),
+		},
+		{
 			id: "layout.explorer.toggle",
 			title: explorerVisible() ? "Explorerを隠す" : "Explorerを表示",
 			keywords: "layout explorer sidebar toggle",
@@ -2470,6 +2501,9 @@ function App() {
 				<Show when={workspace()}>
 					<button disabled={historyBusy()} onClick={() => void createHistorySnapshot()}>Snapshot</button>
 					<button onClick={toggleHistory}>履歴</button>
+				</Show>
+				<Show when={workspace()}>
+					<button title="Ctrl+Shift+E" classList={{ active: focusMode() }} onClick={toggleFocusMode}>Focus</button>
 				</Show>
 				<Show when={document()}>
 					<button disabled={!dirty() || saving()} onClick={() => void saveDocument()}>
