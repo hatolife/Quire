@@ -35,7 +35,7 @@ pub struct GraphEdge {
 	pub target: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkGraph {
 	pub nodes: Vec<GraphNode>,
