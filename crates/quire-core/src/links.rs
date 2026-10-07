@@ -82,13 +82,21 @@ impl Workspace {
 				if in_fence {
 					continue;
 				}
-				let matched = extract_links(line).into_iter().any(|(raw_target, _)| {
+				let wiki_match = extract_links(line).into_iter().any(|(raw_target, _)| {
 					self.resolve_wiki_target(&source_relative, &raw_target)
 						.ok()
 						.flatten()
 						.as_deref()
 						== Some(target_relative.as_str())
 				});
+				let markdown_match = extract_markdown_targets(line).into_iter().any(|raw_target| {
+					self.resolve_markdown_target(&source_relative, raw_target)
+						.ok()
+						.flatten()
+						.as_deref()
+						== Some(target_relative.as_str())
+				});
+				let matched = wiki_match || markdown_match;
 				if matched {
 					backlinks.push(Backlink {
 						source_path: source_relative.clone(),
@@ -193,13 +201,30 @@ impl Workspace {
 					output.push_str(ending);
 					continue;
 				}
-				let rewritten = rewrite_links_in_line(line, |raw_target| {
+				let wiki_rewritten = rewrite_links_in_line(line, |raw_target| {
 					self.resolve_wiki_target(&source_relative, raw_target)
 						.ok()
 						.flatten()
 						.as_deref()
 						== Some(from_relative.as_str())
 				}, &replacement);
+				let effective_source = if source_relative == from_relative_path {
+					to_relative_path
+				}else{
+					&source_relative
+				};
+				let rewritten = rewrite_markdown_links_in_line(&wiki_rewritten, |raw_target| {
+					let matches = self.resolve_markdown_target(&source_relative, raw_target)
+						.ok()
+						.flatten()
+						.as_deref()
+						== Some(from_relative.as_str());
+					if matches {
+						Some(markdown_link_target(effective_source, to_relative_path, raw_target))
+					}else{
+						None
+					}
+				});
 				changed |= rewritten != line;
 				output.push_str(&rewritten);
 				output.push_str(ending);
@@ -217,15 +242,15 @@ impl Workspace {
 	}
 
 	pub fn resolve_markdown_target(&self, source_relative_path: &str, raw_target: &str) -> Result<Option<String>, WorkspaceError> {
-		let target = raw_target
+		let encoded_target = raw_target
 			.split('#')
 			.next()
 			.unwrap_or("")
 			.split('?')
 			.next()
 			.unwrap_or("")
-			.trim()
-			.replace('\\', "/");
+			.trim();
+		let target = decode_percent_path(encoded_target).replace('\\', "/");
 		if target.is_empty() {
 			return Ok(Some(source_relative_path.to_string()));
 		}
@@ -370,6 +395,176 @@ fn rewrite_links_in_line(
 		rest = &after_start[end + 2..];
 	}
 	output.push_str(rest);
+	output
+}
+
+fn markdown_link_target(source_relative_path: &str, target_relative_path: &str, original_target: &str) -> String {
+	let source_parent = Path::new(source_relative_path).parent().unwrap_or_else(|| Path::new(""));
+	let target = Path::new(target_relative_path);
+	let relative = relative_path(source_parent, target);
+	let encoded = encode_markdown_path(&portable_path(&relative));
+	let suffix_start = original_target
+		.char_indices()
+		.find_map(|(index, ch)| matches!(ch, '?' | '#').then_some(index))
+		.unwrap_or(original_target.len());
+	format!("{}{}", encoded, &original_target[suffix_start..])
+}
+
+fn relative_path(from_directory: &Path, to_path: &Path) -> PathBuf {
+	let from = from_directory.components().filter_map(normal_component).collect::<Vec<_>>();
+	let to = to_path.components().filter_map(normal_component).collect::<Vec<_>>();
+	let mut common = 0usize;
+	while common < from.len() && common < to.len() && from[common] == to[common] {
+		common += 1;
+	}
+	let mut result = PathBuf::new();
+	for _ in common..from.len() {
+		result.push("..");
+	}
+	for component in &to[common..] {
+		result.push(component);
+	}
+	if result.as_os_str().is_empty() {
+		result.push(".");
+	}
+	result
+}
+
+fn normal_component(component: Component<'_>) -> Option<std::ffi::OsString> {
+	match component {
+		Component::Normal(value) => Some(value.to_os_string()),
+		_ => None,
+	}
+}
+
+fn encode_markdown_path(value: &str) -> String {
+	let mut encoded = String::new();
+	for byte in value.as_bytes() {
+		if byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b'~' | b'/') {
+			encoded.push(*byte as char);
+		}else{
+			encoded.push_str(&format!("%{byte:02X}"));
+		}
+	}
+	encoded
+}
+
+fn decode_percent_path(value: &str) -> String {
+	let bytes = value.as_bytes();
+	let mut decoded = Vec::with_capacity(bytes.len());
+	let mut index = 0usize;
+	while index < bytes.len() {
+		if bytes[index] == b'%' && index + 2 < bytes.len() {
+			if let (Some(high), Some(low)) = (hex_value(bytes[index + 1]), hex_value(bytes[index + 2])) {
+				decoded.push((high << 4) | low);
+				index += 3;
+				continue;
+			}
+		}
+		decoded.push(bytes[index]);
+		index += 1;
+	}
+	String::from_utf8(decoded).unwrap_or_else(|_| value.to_string())
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+	match value {
+		b'0'..=b'9' => Some(value - b'0'),
+		b'a'..=b'f' => Some(value - b'a' + 10),
+		b'A'..=b'F' => Some(value - b'A' + 10),
+		_ => None,
+	}
+}
+
+fn markdown_destination_range(line: &str, after_open: usize) -> Option<(usize, usize)> {
+	let bytes = line.as_bytes();
+	let mut start = after_open;
+	while start < bytes.len() && bytes[start].is_ascii_whitespace() {
+		start += 1;
+	}
+	if start >= bytes.len() {
+		return None;
+	}
+	if bytes[start] == b'<' {
+		let mut index = start + 1;
+		while index < bytes.len() {
+			if bytes[index] == b'>' && (index == 0 || bytes[index - 1] != b'\\') {
+				return Some((start + 1, index));
+			}
+			index += 1;
+		}
+		return None;
+	}
+
+	let mut depth = 0usize;
+	let mut index = start;
+	while index < bytes.len() {
+		match bytes[index] {
+			b'\\' => index = (index + 2).min(bytes.len()),
+			b'(' => {
+				depth += 1;
+				index += 1;
+			}
+			b')' if depth == 0 => return Some((start, index)),
+			b')' => {
+				depth -= 1;
+				index += 1;
+			}
+			value if value.is_ascii_whitespace() && depth == 0 => return Some((start, index)),
+			_ => index += 1,
+		}
+	}
+	None
+}
+
+fn extract_markdown_targets(line: &str) -> Vec<&str> {
+	let mut targets = Vec::new();
+	let mut search_from = 0usize;
+	while search_from < line.len() {
+		let Some(relative_end) = line[search_from..].find("](") else { break; };
+		let label_end = search_from + relative_end;
+		let label_start = line[..label_end].rfind('[');
+		let is_image = label_start.is_some_and(|start| start > 0 && line.as_bytes()[start - 1] == b'!');
+		if !is_image {
+			if let Some((start, end)) = markdown_destination_range(line, label_end + 2) {
+				if start < end {
+					targets.push(&line[start..end]);
+				}
+			}
+		}
+		search_from = label_end + 2;
+	}
+	targets
+}
+
+fn rewrite_markdown_links_in_line(
+	line: &str,
+	mut replacement_for: impl FnMut(&str) -> Option<String>,
+) -> String {
+	let mut replacements: Vec<(usize, usize, String)> = Vec::new();
+	let mut search_from = 0usize;
+	while search_from < line.len() {
+		let Some(relative_end) = line[search_from..].find("](") else { break; };
+		let label_end = search_from + relative_end;
+		let label_start = line[..label_end].rfind('[');
+		let is_image = label_start.is_some_and(|start| start > 0 && line.as_bytes()[start - 1] == b'!');
+		if !is_image {
+			if let Some((start, end)) = markdown_destination_range(line, label_end + 2) {
+				let target = &line[start..end];
+				if let Some(replacement) = replacement_for(target) {
+					replacements.push((start, end, replacement));
+				}
+			}
+		}
+		search_from = label_end + 2;
+	}
+	if replacements.is_empty() {
+		return line.to_string();
+	}
+	let mut output = line.to_string();
+	for (start, end, replacement) in replacements.into_iter().rev() {
+		output.replace_range(start..end, &replacement);
+	}
 	output
 }
 
@@ -547,6 +742,44 @@ mod tests {
 		assert!(source.contains("[[archive/Renamed|label]]"));
 		assert!(source.contains("[[archive/Renamed#Heading]]"));
 		assert!(source.contains("~~~md\n[[notes/Target]]\n~~~"));
+	}
+
+	#[test]
+	fn moving_document_updates_standard_markdown_links() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir_all(temp.path().join("notes")).unwrap();
+		fs::create_dir_all(temp.path().join("archive")).unwrap();
+		fs::create_dir_all(temp.path().join("references")).unwrap();
+		fs::write(temp.path().join("notes").join("Target File.md"), "# Target").unwrap();
+		fs::write(
+			temp.path().join("references").join("Source.md"),
+			"[target](../notes/Target%20File.md?view=1#Heading)\n![image](../notes/Target%20File.md)\n",
+		).unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let target = workspace.read_document("notes/Target File.md").unwrap();
+
+		let moved = workspace
+			.move_document_with_wiki_links("notes/Target File.md", "archive/Renamed File.md", &target.revision)
+			.unwrap();
+
+		assert_eq!(moved.document.relative_path, "archive/Renamed File.md");
+		let source = fs::read_to_string(temp.path().join("references").join("Source.md")).unwrap();
+		assert!(source.contains("[target](../archive/Renamed%20File.md?view=1#Heading)"));
+		assert!(source.contains("![image](../notes/Target%20File.md)"));
+	}
+
+	#[test]
+	fn backlinks_include_standard_markdown_links() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir_all(temp.path().join("notes")).unwrap();
+		fs::write(temp.path().join("notes").join("Target.md"), "# Target").unwrap();
+		fs::write(temp.path().join("Source.md"), "[target](notes/Target.md)").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+
+		let backlinks = workspace.backlinks("notes/Target.md").unwrap();
+
+		assert_eq!(backlinks.len(), 1);
+		assert_eq!(backlinks[0].source_path, "Source.md");
 	}
 
 	#[test]
