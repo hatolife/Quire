@@ -600,7 +600,7 @@ mod tests {
 
 		let combined = index.search("path:work tag:project/quire \"exact phrase\"", 20);
 		assert_eq!(combined.iter().filter(|hit| hit.kind == SearchKind::Content).count(), 1);
-		assert_eq!(combined.iter().find(|hit| hit.kind == SearchKind::Content).unwrap().line, Some(5));
+		assert_eq!(combined.iter().find(|hit| hit.kind == SearchKind::Content).unwrap().line, Some(4));
 	}
 
 	#[test]

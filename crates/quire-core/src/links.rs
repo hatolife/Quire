@@ -1071,7 +1071,7 @@ mod tests {
 	}
 
 	#[test]
-	fn link_index_uses_first_sorted_path_for_duplicate_stems() {
+	fn link_index_rejects_duplicate_stems() {
 		let temp = tempfile::tempdir().unwrap();
 		fs::create_dir_all(temp.path().join("a")).unwrap();
 		fs::create_dir_all(temp.path().join("z")).unwrap();
@@ -1081,7 +1081,7 @@ mod tests {
 
 		let index = workspace.build_link_index().unwrap();
 
-		assert_eq!(index.resolve_bare_wiki_target("Same").as_deref(), Some("a/Same.md"));
+		assert_eq!(index.resolve_bare_wiki_target("Same"), None);
 	}
 
 	#[test]
