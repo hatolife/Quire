@@ -20,6 +20,28 @@ pub struct Backlink {
 	pub preview: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNode {
+	pub path: String,
+	pub incoming: usize,
+	pub outgoing: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphEdge {
+	pub source: String,
+	pub target: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkGraph {
+	pub nodes: Vec<GraphNode>,
+	pub edges: Vec<GraphEdge>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentMove {
@@ -166,6 +188,39 @@ impl LinkIndex {
 
 	pub fn backlinks(&self, target_relative_path: &str) -> Vec<Backlink> {
 		self.backlinks.get(target_relative_path).cloned().unwrap_or_default()
+	}
+
+	pub fn graph(&self) -> LinkGraph {
+		let mut edge_set = std::collections::BTreeSet::new();
+		let mut incoming: HashMap<String, usize> = HashMap::new();
+		let mut outgoing: HashMap<String, usize> = HashMap::new();
+
+		for (target, backlinks) in &self.backlinks {
+			for backlink in backlinks {
+				if backlink.source_path == *target {
+					continue;
+				}
+				if edge_set.insert((backlink.source_path.clone(), target.clone())) {
+					*incoming.entry(target.clone()).or_default() += 1;
+					*outgoing.entry(backlink.source_path.clone()).or_default() += 1;
+				}
+			}
+		}
+
+		let nodes = self.aliases_by_document
+			.keys()
+			.map(|path| GraphNode {
+				path: path.clone(),
+				incoming: incoming.get(path).copied().unwrap_or(0),
+				outgoing: outgoing.get(path).copied().unwrap_or(0),
+			})
+			.collect();
+		let edges = edge_set
+			.into_iter()
+			.map(|(source, target)| GraphEdge { source, target })
+			.collect();
+
+		LinkGraph { nodes, edges }
 	}
 
 	pub fn resolve_bare_wiki_target(&self, raw_target: &str) -> Option<String> {
@@ -1099,6 +1154,27 @@ mod tests {
 
 		assert!(index.backlinks("B.md").is_empty());
 		assert_eq!(index.backlinks("C.md").len(), 1);
+	}
+
+	#[test]
+	fn link_graph_deduplicates_edges_and_keeps_unlinked_documents() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("A.md"), "[[B]]\n[[B]]\n").unwrap();
+		fs::write(temp.path().join("B.md"), "# B").unwrap();
+		fs::write(temp.path().join("C.md"), "# C").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let index = workspace.build_link_index().unwrap();
+
+		let graph = index.graph();
+
+		assert_eq!(graph.nodes.len(), 3);
+		assert_eq!(graph.edges, vec![GraphEdge { source: "A.md".to_string(), target: "B.md".to_string() }]);
+		let a = graph.nodes.iter().find(|node| node.path == "A.md").unwrap();
+		let b = graph.nodes.iter().find(|node| node.path == "B.md").unwrap();
+		let c = graph.nodes.iter().find(|node| node.path == "C.md").unwrap();
+		assert_eq!((a.incoming, a.outgoing), (0, 1));
+		assert_eq!((b.incoming, b.outgoing), (1, 0));
+		assert_eq!((c.incoming, c.outgoing), (0, 0));
 	}
 
 	#[test]

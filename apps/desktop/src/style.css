@@ -1445,3 +1445,61 @@ button.primary {
 	background: #665d21;
 	color: inherit;
 }
+
+.graph-pane {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	background:
+		radial-gradient(circle at center, rgba(255,255,255,0.025), transparent 60%),
+		#141414;
+}
+
+.graph-canvas {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
+.graph-edges line {
+	stroke: #454545;
+	stroke-width: 0.22;
+	vector-effect: non-scaling-stroke;
+}
+
+.graph-node {
+	cursor: pointer;
+}
+
+.graph-node circle {
+	fill: #777;
+	stroke: #aaa;
+	stroke-width: 0.18;
+	vector-effect: non-scaling-stroke;
+}
+
+.graph-node text {
+	fill: #aaa;
+	font-size: 2.2px;
+	pointer-events: none;
+	user-select: none;
+}
+
+.graph-node:hover circle {
+	fill: #aaa;
+	stroke: #eee;
+}
+
+.graph-node.current circle {
+	fill: #e5e5e5;
+	stroke: #fff;
+}
+
+.graph-node.current text {
+	fill: #fff;
+	font-weight: 700;
+}
+
+.graph-node.isolated {
+	opacity: 0.5;
+}

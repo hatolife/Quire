@@ -49,6 +49,22 @@ export type Backlink = {
 	preview: string;
 };
 
+export type GraphNode = {
+	path: string;
+	incoming: number;
+	outgoing: number;
+};
+
+export type GraphEdge = {
+	source: string;
+	target: string;
+};
+
+export type LinkGraph = {
+	nodes: GraphNode[];
+	edges: GraphEdge[];
+};
+
 export type AssetImport = {
 	relativePath: string;
 	markdownSource: string;
@@ -107,6 +123,10 @@ export function workspaceWatchStop() {
 
 export function workspaceSearch(query: string, limit = 100) {
 	return invoke<SearchHit[]>("workspace_search", { query, limit });
+}
+
+export function workspaceGraph() {
+	return invoke<LinkGraph>("workspace_graph");
 }
 
 export function workspaceTags() {

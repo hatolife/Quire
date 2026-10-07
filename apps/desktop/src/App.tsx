@@ -4,6 +4,7 @@ import MarkdownIt from "markdown-it";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import BrowserPane from "./browser/BrowserPane";
+import GraphPane from "./graph/GraphPane";
 import CommandPalette, { type AppCommand } from "./commands/CommandPalette";
 import QuickOpen from "./commands/QuickOpen";
 import NeovimEditor from "./editor/NeovimEditor";
@@ -38,6 +39,7 @@ import {
 	settingsLoad,
 	settingsSave,
 	workspaceDocuments,
+	workspaceGraph,
 	workspaceList,
 	workspaceOpen,
 	workspaceReindex,
@@ -49,6 +51,7 @@ import {
 	type Backlink,
 	type DesktopSettings,
 	type Document,
+	type LinkGraph,
 	type LogEntry,
 	type RecoveryDraft,
 	type SearchHit,
@@ -849,7 +852,8 @@ function App() {
 	const [autoSnapshotEnabled, setAutoSnapshotEnabled] = createSignal(true);
 	const [autoSnapshotDelaySeconds, setAutoSnapshotDelaySeconds] = createSignal(5);
 	const [historyRetentionSnapshots, setHistoryRetentionSnapshots] = createSignal(200);
-	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
+	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser" | "graph">("preview");
+	const [linkGraph, setLinkGraph] = createSignal<LinkGraph | null>(null);
 	const [browserTargetUrl, setBrowserTargetUrl] = createSignal<string | undefined>();
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
 	const [quickOpenVisible, setQuickOpenVisible] = createSignal(false);
@@ -1010,6 +1014,9 @@ function App() {
 							.then(setBacklinks)
 							.catch(error => updateStatus("Backlink index read error: " + String(error), "error", "links"));
 					}
+					void workspaceGraph()
+						.then(setLinkGraph)
+						.catch(error => updateStatus("Graph index read error: " + String(error), "error", "links"));
 					void appendLog("info", "index", "Search/link indexes rebuilt: " + count + " documents / " + reason);
 				}
 			}while(searchReindexPending && workspace());
@@ -1395,7 +1402,7 @@ function App() {
 				setAutoSnapshotEnabled(settings.autoSnapshotEnabled);
 				setAutoSnapshotDelaySeconds(Math.max(1, Math.min(300, settings.autoSnapshotDelaySeconds)));
 				setHistoryRetentionSnapshots(Math.max(10, Math.min(10000, settings.historyRetentionSnapshots)));
-				setRightPaneMode(settings.lastRightPane === "browser" ? "browser" : "preview");
+				setRightPaneMode(settings.lastRightPane === "browser" ? "browser" : settings.lastRightPane === "graph" ? "graph" : "preview");
 				if(settings.lastBrowserUrl && /^https?:\/\//i.test(settings.lastBrowserUrl)){
 					setBrowserTargetUrl(settings.lastBrowserUrl);
 				}
@@ -2309,6 +2316,13 @@ function App() {
 			run: () => setRightPaneMode("preview"),
 		},
 		{
+			id: "pane.graph",
+			title: "Graph paneを表示",
+			keywords: "graph links backlinks network",
+			enabled: workspace() !== null,
+			run: () => setRightPaneMode("graph"),
+		},
+		{
 			id: "pane.browser",
 			title: "Browser paneを表示",
 			keywords: "web browser pane",
@@ -2550,6 +2564,13 @@ function App() {
 							>
 								Browser
 							</button>
+							<button
+								class="pane-tab"
+								classList={{ active: rightPaneMode() === "graph" }}
+								onClick={() => setRightPaneMode("graph")}
+							>
+								Graph
+							</button>
 						</div>
 						<div class="right-pane-content">
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "preview" }}>
@@ -2578,6 +2599,13 @@ function App() {
 										</Show>
 									</div>
 								</Show>
+							</div>
+							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "graph" }}>
+								<GraphPane
+									graph={linkGraph()}
+									currentPath={document()?.relativePath}
+									onOpen={path => openDocument(path)}
+								/>
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
 								<BrowserPane
