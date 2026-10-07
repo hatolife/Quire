@@ -38,6 +38,7 @@ import {
 	workspaceOpen,
 	workspaceReindex,
 	workspaceSearch,
+	workspaceTags,
 	workspaceWatch,
 	workspaceWatchStop,
 	type Backlink,
@@ -47,6 +48,7 @@ import {
 	type RecoveryDraft,
 	type SearchHit,
 	type Snapshot,
+	type TagInfo,
 	type WorkspaceEntry,
 	type WorkspaceInfo,
 	type WorkspaceWatchMessage,
@@ -360,6 +362,8 @@ function App() {
 	const [searching, setSearching] = createSignal(false);
 	const [searchIndexReady, setSearchIndexReady] = createSignal(false);
 	const [searchIndexBuilding, setSearchIndexBuilding] = createSignal(false);
+	const [tags, setTags] = createSignal<TagInfo[]>([]);
+	const [explorerMode, setExplorerMode] = createSignal<"files" | "tags">("files");
 	const [initialEditorLine, setInitialEditorLine] = createSignal<number | undefined>();
 	const [backlinks, setBacklinks] = createSignal<Backlink[]>([]);
 	const [historyOpen, setHistoryOpen] = createSignal(false);
@@ -490,6 +494,7 @@ function App() {
 	const rebuildSearchIndex = async (reason = "manual") => {
 		if(!workspace()){
 			setSearchIndexReady(false);
+			setTags([]);
 			return;
 		}
 		if(searchIndexBuilding()){
@@ -503,6 +508,9 @@ function App() {
 				const count = await workspaceReindex();
 				if(count !== null){
 					setSearchIndexReady(true);
+					void workspaceTags()
+						.then(setTags)
+						.catch(error => updateStatus("Tag index read error: " + String(error), "error", "index"));
 					const current = document();
 					if(current){
 						void documentBacklinks(current.relativePath)
@@ -1510,7 +1518,8 @@ function App() {
 				>
 					<aside class="explorer">
 						<div class="pane-title explorer-title">
-							<span>Explorer</span>
+							<button class="explorer-mode" classList={{ active: explorerMode() === "files" }} onClick={() => setExplorerMode("files")}>Files</button>
+							<button class="explorer-mode" classList={{ active: explorerMode() === "tags" }} onClick={() => setExplorerMode("tags")}>Tags</button>
 							<span class="toolbar-spacer" />
 							<button class="pane-action" title="新規Markdown" onClick={() => void createDocument()}>＋</button>
 							<button class="pane-action" title="再読込" onClick={() => void refreshExplorer()}>↻</button>
@@ -1529,9 +1538,31 @@ function App() {
 							<Show
 								when={searchQuery().trim()}
 								fallback={
-									<For each={entries()}>
-										{entry => <TreeEntry entry={entry} loadDirectory={loadDirectory} openDocument={openDocument} />}
-									</For>
+									<Show
+										when={explorerMode() === "files"}
+										fallback={
+											<div class="tag-list">
+												<For each={tags()}>
+													{tag => (
+														<button class="tag-entry" onClick={() => {
+															setSearchQuery("#" + tag.name);
+															explorerSearchInput?.focus();
+														}}>
+															<span>#{tag.name}</span>
+															<small>{tag.count}</small>
+														</button>
+													)}
+												</For>
+												<Show when={searchIndexReady() && tags().length === 0}>
+													<div class="search-state">タグはありません</div>
+												</Show>
+											</div>
+										}
+									>
+										<For each={entries()}>
+											{entry => <TreeEntry entry={entry} loadDirectory={loadDirectory} openDocument={openDocument} />}
+										</For>
+									</Show>
 								}
 							>
 								<Show

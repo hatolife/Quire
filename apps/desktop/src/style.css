@@ -1017,3 +1017,48 @@ button.primary {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+.explorer-mode {
+	height: 24px;
+	padding: 1px 6px;
+	border-color: transparent;
+	background: transparent;
+	color: #888;
+	font-size: 11px;
+}
+
+.explorer-mode.active {
+	background: #2c2c2c;
+	color: #ddd;
+	border-color: #3d3d3d;
+}
+
+.tag-list {
+	padding: 3px;
+}
+
+.tag-entry {
+	display: grid;
+	width: 100%;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 8px;
+	align-items: center;
+	padding: 5px 7px;
+	border: 0;
+	background: transparent;
+	text-align: left;
+}
+
+.tag-entry:hover {
+	background: #292929;
+}
+
+.tag-entry > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tag-entry small {
+	color: #777;
+}

@@ -38,6 +38,11 @@ export type SearchHit = {
 	preview: string;
 };
 
+export type TagInfo = {
+	name: string;
+	count: number;
+};
+
 export type Backlink = {
 	sourcePath: string;
 	line: number;
@@ -98,6 +103,10 @@ export function workspaceWatchStop() {
 
 export function workspaceSearch(query: string, limit = 100) {
 	return invoke<SearchHit[]>("workspace_search", { query, limit });
+}
+
+export function workspaceTags() {
+	return invoke<TagInfo[]>("workspace_tags");
 }
 
 export function workspaceReindex() {

@@ -1,5 +1,6 @@
 use crate::{Workspace, WorkspaceError};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,13 @@ pub struct SearchHit {
 	pub preview: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagInfo {
+	pub name: String,
+	pub count: usize,
+}
+
 #[derive(Debug, Clone)]
 struct IndexedLine {
 	original: String,
@@ -35,6 +43,7 @@ struct IndexedDocument {
 #[derive(Debug, Clone, Default)]
 pub struct SearchIndex {
 	documents: Vec<IndexedDocument>,
+	tags: Vec<TagInfo>,
 }
 
 impl SearchIndex {
@@ -44,6 +53,7 @@ impl SearchIndex {
 		files.sort();
 
 		let mut documents = Vec::with_capacity(files.len());
+		let mut tag_counts: HashMap<String, (String, usize)> = HashMap::new();
 		for path in files {
 			let relative = path
 				.strip_prefix(&workspace.root)
@@ -58,6 +68,21 @@ impl SearchIndex {
 				Ok(content) => content,
 				Err(_) => continue,
 			};
+			let mut in_fence = false;
+			for line in content.lines() {
+				if is_fence(line) {
+					in_fence = !in_fence;
+					continue;
+				}
+				if in_fence {
+					continue;
+				}
+				for tag in extract_tags(line) {
+					let key = tag.to_lowercase();
+					let entry = tag_counts.entry(key).or_insert_with(|| (tag, 0));
+					entry.1 += 1;
+				}
+			}
 			let lines = content
 				.lines()
 				.map(|line| IndexedLine {
@@ -71,7 +96,16 @@ impl SearchIndex {
 				lines,
 			});
 		}
-		Ok(Self { documents })
+		let mut tags = tag_counts
+			.into_values()
+			.map(|(name, count)| TagInfo { name, count })
+			.collect::<Vec<_>>();
+		tags.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+		Ok(Self { documents, tags })
+	}
+
+	pub fn tags(&self) -> Vec<TagInfo> {
+		self.tags.clone()
 	}
 
 	pub fn document_count(&self) -> usize {
@@ -158,6 +192,44 @@ fn collect_markdown_files(root: &Path, directory: &Path, files: &mut Vec<PathBuf
 	Ok(())
 }
 
+fn is_fence(line: &str) -> bool {
+	let trimmed = line.trim_start().as_bytes();
+	trimmed.starts_with(&[126, 126, 126]) || trimmed.starts_with(&[96, 96, 96])
+}
+
+fn extract_tags(line: &str) -> Vec<String> {
+	let chars = line.char_indices().collect::<Vec<_>>();
+	let mut tags = Vec::new();
+	for (position, (start, ch)) in chars.iter().copied().enumerate() {
+		if ch != '#' {
+			continue;
+		}
+		if position > 0 {
+			let previous = chars[position - 1].1;
+			if previous.is_alphanumeric() || matches!(previous, '_' | '-' | '/' | '#') {
+				continue;
+			}
+		}
+		let mut end = start + ch.len_utf8();
+		for (_, candidate) in chars.iter().copied().skip(position + 1) {
+			if candidate.is_alphanumeric() || matches!(candidate, '_' | '-' | '/') {
+				end += candidate.len_utf8();
+			}else{
+				break;
+			}
+		}
+		if end <= start + 1 {
+			continue;
+		}
+		let tag = &line[start + 1..end];
+		if !tag.chars().any(|value| value.is_alphabetic() || value == '_') {
+			continue;
+		}
+		tags.push(tag.to_string());
+	}
+	tags
+}
+
 fn is_markdown(path: &Path) -> bool {
 	path.extension()
 		.and_then(|extension| extension.to_str())
@@ -219,6 +291,25 @@ mod tests {
 		assert_eq!(hits[0].relative_path, "target-note.md");
 		assert_eq!(hits[1].kind, SearchKind::Content);
 		assert_eq!(hits[1].relative_path, "a.md");
+	}
+
+	#[test]
+	fn search_index_collects_tags_outside_fences() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(
+			temp.path().join("tags.md"),
+			"# Heading\n#alpha #日本語/sub #123\n~~~md\n#ignored\n~~~\n#Alpha\n",
+		).unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let index = workspace.build_search_index().unwrap();
+
+		let tags = index.tags();
+
+		assert_eq!(tags.len(), 2);
+		assert_eq!(tags[0].name.to_lowercase(), "alpha");
+		assert_eq!(tags[0].count, 2);
+		assert_eq!(tags[1].name, "日本語/sub");
+		assert_eq!(tags[1].count, 1);
 	}
 
 	#[test]

@@ -5,7 +5,7 @@ mod settings;
 mod watcher;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use quire_core::{AssetImport, Backlink, Document, DocumentMove, HistoryStore, LinkIndex, SearchHit, SearchIndex, Snapshot, Workspace, WorkspaceEntry, WorkspaceInfo};
+use quire_core::{AssetImport, Backlink, Document, DocumentMove, HistoryStore, LinkIndex, SearchHit, SearchIndex, Snapshot, TagInfo, Workspace, WorkspaceEntry, WorkspaceInfo};
 use serde::Serialize;
 use std::path::Path;
 use tauri::ipc::Channel;
@@ -77,6 +77,12 @@ fn workspace_search(query: String, limit: usize, state: tauri::State<'_, AppStat
 	let index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
 	let index = index.as_ref().ok_or_else(|| "Workspace search index is not ready.".to_string())?;
 	Ok(index.search(&query, limit))
+}
+
+#[tauri::command]
+fn workspace_tags(state: tauri::State<'_, AppState>) -> Result<Vec<TagInfo>, String> {
+	let index = state.search_index.lock().map_err(|_| "Search index state lock failed.".to_string())?;
+	Ok(index.as_ref().map(SearchIndex::tags).unwrap_or_default())
 }
 
 #[tauri::command]
@@ -544,6 +550,7 @@ fn main() {
 			workspace_watch,
 			workspace_watch_stop,
 			workspace_search,
+			workspace_tags,
 			workspace_reindex,
 			document_backlinks,
 			document_resolve_markdown_link,
