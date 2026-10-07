@@ -1,5 +1,6 @@
 mod history;
 mod links;
+mod scan;
 mod search;
 mod workspace;
 

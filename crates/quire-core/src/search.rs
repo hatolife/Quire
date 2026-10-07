@@ -1,8 +1,8 @@
-use crate::{Workspace, WorkspaceError};
+use crate::{scan, Workspace, WorkspaceError};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -48,8 +48,7 @@ pub struct SearchIndex {
 
 impl SearchIndex {
 	pub fn build(workspace: &Workspace) -> Result<Self, WorkspaceError> {
-		let mut files = Vec::new();
-		collect_markdown_files(&workspace.root, &workspace.root, &mut files)?;
+		let mut files = scan::markdown_files(&workspace.root).map_err(WorkspaceError::Io)?;
 		files.sort();
 
 		let mut documents = Vec::with_capacity(files.len());
@@ -165,33 +164,6 @@ impl Workspace {
 	}
 }
 
-fn collect_markdown_files(root: &Path, directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), WorkspaceError> {
-	for entry in fs::read_dir(directory)? {
-		let entry = entry?;
-		let file_type = entry.file_type()?;
-		if file_type.is_symlink() {
-			continue;
-		}
-		let name = entry.file_name();
-		if name == ".git" {
-			continue;
-		}
-		let path = entry.path();
-		if file_type.is_dir() {
-			collect_markdown_files(root, &path, files)?;
-			continue;
-		}
-		if !file_type.is_file() || !is_markdown(&path) {
-			continue;
-		}
-		let canonical = fs::canonicalize(&path)?;
-		if canonical.starts_with(root) {
-			files.push(canonical);
-		}
-	}
-	Ok(())
-}
-
 fn is_fence(line: &str) -> bool {
 	let trimmed = line.trim_start().as_bytes();
 	trimmed.starts_with(&[126, 126, 126]) || trimmed.starts_with(&[96, 96, 96])
@@ -228,12 +200,6 @@ fn extract_tags(line: &str) -> Vec<String> {
 		tags.push(tag.to_string());
 	}
 	tags
-}
-
-fn is_markdown(path: &Path) -> bool {
-	path.extension()
-		.and_then(|extension| extension.to_str())
-		.is_some_and(|extension| extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("markdown"))
 }
 
 fn compact_preview(line: &str, max_chars: usize) -> String {

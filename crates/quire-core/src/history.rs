@@ -1,3 +1,4 @@
+use crate::scan;
 use serde::Serialize;
 use std::ffi::OsString;
 use std::fs;
@@ -74,8 +75,15 @@ impl HistoryStore {
 		}
 		self.git_with_index(&["read-tree", "--empty"], &index)?;
 
-		let mut files = Vec::new();
-		collect_files(&self.workspace_root, &self.workspace_root, &mut files)?;
+		let mut files = scan::workspace_files(&self.workspace_root)?;
+		files = files
+			.into_iter()
+			.map(|path| {
+				path.strip_prefix(&self.workspace_root)
+					.map(Path::to_path_buf)
+					.map_err(|_| HistoryError::InvalidPath(path.display().to_string()))
+			})
+			.collect::<Result<Vec<_>, _>>()?;
 		files.sort();
 		for relative in files {
 			let relative_os = relative.as_os_str().to_os_string();
@@ -297,29 +305,6 @@ impl HistoryStore {
 	}
 }
 
-fn collect_files(root: &Path, directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), HistoryError> {
-	for entry in fs::read_dir(directory)? {
-		let entry = entry?;
-		if entry.file_name() == ".git" {
-			continue;
-		}
-		let file_type = entry.file_type()?;
-		if file_type.is_symlink() {
-			continue;
-		}
-		let path = entry.path();
-		if file_type.is_dir() {
-			collect_files(root, &path, files)?;
-		}else if file_type.is_file() {
-			let relative = path
-				.strip_prefix(root)
-				.map_err(|_| HistoryError::InvalidPath(path.display().to_string()))?;
-			files.push(relative.to_path_buf());
-		}
-	}
-	Ok(())
-}
-
 fn normalize_relative(relative_path: &str) -> Result<PathBuf, HistoryError> {
 	let path = Path::new(relative_path);
 	if path.as_os_str().is_empty() || path.is_absolute() {
@@ -391,6 +376,25 @@ mod tests {
 
 		assert_eq!(fs::read(workspace.join("note.md")).unwrap(), b"line1\r\nline2\r\n");
 		assert_eq!(store.list_snapshots(10).unwrap().len(), 2);
+	}
+
+	#[test]
+	fn history_respects_quireignore_but_not_gitignore() {
+		if !git_available(){ return; }
+		let temp = tempfile::tempdir().unwrap();
+		let workspace = temp.path().join("workspace");
+		let history = temp.path().join("history.git");
+		fs::create_dir(&workspace).unwrap();
+		fs::write(workspace.join(".quireignore"), "ignored.bin\n").unwrap();
+		fs::write(workspace.join(".gitignore"), "kept.bin\n").unwrap();
+		fs::write(workspace.join("ignored.bin"), b"ignored").unwrap();
+		fs::write(workspace.join("kept.bin"), b"kept").unwrap();
+		let store = HistoryStore::open(&workspace, &history).unwrap();
+
+		let snapshot = store.create_snapshot("Ignore rules").unwrap();
+
+		assert!(store.git(&["show", &format!("{}:kept.bin", snapshot.id)]).is_ok());
+		assert!(store.git(&["show", &format!("{}:ignored.bin", snapshot.id)]).is_err());
 	}
 
 	#[test]

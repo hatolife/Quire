@@ -1,4 +1,4 @@
-use crate::{Workspace, WorkspaceError};
+use crate::{scan, Workspace, WorkspaceError};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -36,8 +36,7 @@ pub struct LinkIndex {
 
 impl LinkIndex {
 	pub fn build(workspace: &Workspace) -> Result<Self, WorkspaceError> {
-		let mut files = Vec::new();
-		collect_markdown_files(&workspace.root, &mut files)?;
+		let mut files = scan::markdown_files(&workspace.root).map_err(WorkspaceError::Io)?;
 		files.sort();
 
 		let mut documents = Vec::with_capacity(files.len());
@@ -161,8 +160,7 @@ impl Workspace {
 				.strip_prefix(&self.root)
 				.map_err(|_| WorkspaceError::InvalidRelativePath(target.display().to_string()))?,
 		);
-		let mut files = Vec::new();
-		collect_markdown_files(&self.root, &mut files)?;
+		let mut files = scan::markdown_files(&self.root).map_err(WorkspaceError::Io)?;
 		files.sort();
 
 		let mut backlinks = Vec::new();
@@ -281,8 +279,7 @@ impl Workspace {
 				.map_err(|_| WorkspaceError::InvalidRelativePath(from.display().to_string()))?,
 		);
 		let replacement = wiki_target_for_path(to_relative_path);
-		let mut files = Vec::new();
-		collect_markdown_files(&self.root, &mut files)?;
+		let mut files = scan::markdown_files(&self.root).map_err(WorkspaceError::Io)?;
 		files.sort();
 
 		let mut plans = Vec::new();
@@ -468,8 +465,7 @@ impl Workspace {
 			.and_then(|stem| stem.to_str())
 			.unwrap_or(&target)
 			.to_lowercase();
-		let mut files = Vec::new();
-		collect_markdown_files(&self.root, &mut files)?;
+		let mut files = scan::markdown_files(&self.root).map_err(WorkspaceError::Io)?;
 		files.sort();
 		for file in files {
 			let stem = file.file_stem().and_then(|stem| stem.to_str()).unwrap_or("");
@@ -766,26 +762,6 @@ fn extract_links(line: &str) -> Vec<(String, Option<String>)> {
 		rest = &after_start[end + 2..];
 	}
 	links
-}
-
-fn collect_markdown_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), WorkspaceError> {
-	for entry in fs::read_dir(directory)? {
-		let entry = entry?;
-		let file_type = entry.file_type()?;
-		if file_type.is_symlink() {
-			continue;
-		}
-		if entry.file_name() == ".git" {
-			continue;
-		}
-		let path = entry.path();
-		if file_type.is_dir() {
-			collect_markdown_files(&path, files)?;
-		}else if file_type.is_file() && has_markdown_extension(&path) {
-			files.push(fs::canonicalize(path)?);
-		}
-	}
-	Ok(())
 }
 
 fn normalize_relative(path: &Path) -> Result<PathBuf, WorkspaceError> {
