@@ -38,6 +38,7 @@ struct IndexedDocument {
 	relative_path: String,
 	lowercase_path: String,
 	lines: Vec<IndexedLine>,
+	tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -166,6 +167,13 @@ impl SearchIndex {
 		if query.is_empty() || limit == 0 {
 			return Vec::new();
 		}
+		if is_advanced_query(query) {
+			return self.search_advanced(query, limit);
+		}
+		self.search_legacy(query, limit)
+	}
+
+	fn search_legacy(&self, query: &str, limit: usize) -> Vec<SearchHit> {
 		let query_lower = query.to_lowercase();
 		let mut hits = Vec::new();
 
@@ -173,12 +181,7 @@ impl SearchIndex {
 			if !document.lowercase_path.contains(&query_lower) {
 				continue;
 			}
-			hits.push(SearchHit {
-				kind: SearchKind::Filename,
-				relative_path: document.relative_path.clone(),
-				line: None,
-				preview: document.relative_path.clone(),
-			});
+			hits.push(filename_hit(document));
 			if hits.len() >= limit {
 				return hits;
 			}
@@ -189,12 +192,38 @@ impl SearchIndex {
 				if !line.lowercase.contains(&query_lower) {
 					continue;
 				}
-				hits.push(SearchHit {
-					kind: SearchKind::Content,
-					relative_path: document.relative_path.clone(),
-					line: Some(index + 1),
-					preview: compact_preview(&line.original, 180),
-				});
+				hits.push(content_hit(document, index, line));
+				if hits.len() >= limit {
+					return hits;
+				}
+			}
+		}
+		hits
+	}
+
+	fn search_advanced(&self, query: &str, limit: usize) -> Vec<SearchHit> {
+		let parsed = parse_advanced_query(query);
+		let mut hits = Vec::new();
+
+		for document in self.documents.iter().filter(|document| matches_filters(document, &parsed)) {
+			if parsed.terms.is_empty() || parsed.terms.iter().all(|term| document.lowercase_path.contains(term)) {
+				hits.push(filename_hit(document));
+				if hits.len() >= limit {
+					return hits;
+				}
+			}
+		}
+
+		if parsed.terms.is_empty() {
+			return hits;
+		}
+
+		for document in self.documents.iter().filter(|document| matches_filters(document, &parsed)) {
+			for (index, line) in document.lines.iter().enumerate() {
+				if !parsed.terms.iter().all(|term| line.lowercase.contains(term)) {
+					continue;
+				}
+				hits.push(content_hit(document, index, line));
 				if hits.len() >= limit {
 					return hits;
 				}
@@ -226,7 +255,130 @@ fn indexed_document(relative_path: String, content: &str) -> IndexedDocument {
 		lowercase_path: relative_path.to_lowercase(),
 		relative_path,
 		lines,
+		tags: document_tag_keys(content),
 	}
+}
+
+#[derive(Debug, Default)]
+struct ParsedSearchQuery {
+	terms: Vec<String>,
+	path_filters: Vec<String>,
+	tag_filters: Vec<String>,
+}
+
+fn is_advanced_query(query: &str) -> bool {
+	let lower = query.to_lowercase();
+	query.contains('"') || lower.contains("path:") || lower.contains("tag:")
+}
+
+fn parse_advanced_query(query: &str) -> ParsedSearchQuery {
+	let mut parsed = ParsedSearchQuery::default();
+	for token in tokenize_query(query) {
+		let lower = token.to_lowercase();
+		if let Some(value) = lower.strip_prefix("path:") {
+			let value = value.trim();
+			if !value.is_empty() {
+				parsed.path_filters.push(value.replace('\\', "/"));
+			}
+			continue;
+		}
+		if let Some(value) = lower.strip_prefix("tag:") {
+			let value = value.trim().trim_start_matches('#');
+			if !value.is_empty() {
+				parsed.tag_filters.push(value.to_string());
+			}
+			continue;
+		}
+		let term = token.trim().to_lowercase();
+		if !term.is_empty() {
+			parsed.terms.push(term);
+		}
+	}
+	parsed
+}
+
+fn tokenize_query(query: &str) -> Vec<String> {
+	let mut tokens = Vec::new();
+	let mut current = String::new();
+	let mut quoted = false;
+	let mut escaped = false;
+	for ch in query.chars() {
+		if escaped {
+			current.push(ch);
+			escaped = false;
+			continue;
+		}
+		if ch == '\\' && quoted {
+			escaped = true;
+			continue;
+		}
+		if ch == '"' {
+			quoted = !quoted;
+			continue;
+		}
+		if ch.is_whitespace() && !quoted {
+			if !current.is_empty() {
+				tokens.push(std::mem::take(&mut current));
+			}
+			continue;
+		}
+		current.push(ch);
+	}
+	if !current.is_empty() {
+		tokens.push(current);
+	}
+	tokens
+}
+
+fn matches_filters(document: &IndexedDocument, query: &ParsedSearchQuery) -> bool {
+	if !query.path_filters.iter().all(|filter| document.lowercase_path.contains(filter)) {
+		return false;
+	}
+	query.tag_filters.iter().all(|filter| {
+		document.tags.iter().any(|tag| tag == filter || tag.starts_with(&format!("{filter}/")))
+	})
+}
+
+fn filename_hit(document: &IndexedDocument) -> SearchHit {
+	SearchHit {
+		kind: SearchKind::Filename,
+		relative_path: document.relative_path.clone(),
+		line: None,
+		preview: document.relative_path.clone(),
+	}
+}
+
+fn content_hit(document: &IndexedDocument, index: usize, line: &IndexedLine) -> SearchHit {
+	SearchHit {
+		kind: SearchKind::Content,
+		relative_path: document.relative_path.clone(),
+		line: Some(index + 1),
+		preview: compact_preview(&line.original, 180),
+	}
+}
+
+fn document_tag_keys(content: &str) -> Vec<String> {
+	let mut tags = std::collections::HashSet::new();
+	for tag in extract_frontmatter_tags(content) {
+		tags.insert(tag.to_lowercase());
+	}
+	let body_start = frontmatter_body_start(content);
+	let mut in_fence = false;
+	for line in content[body_start..].lines() {
+		if is_fence(line) {
+			in_fence = !in_fence;
+			continue;
+		}
+		if in_fence {
+			continue;
+		}
+		for tag in extract_tags(line) {
+			tags.insert(tag.to_lowercase());
+		}
+	}
+	let mut tags = tags.into_iter().collect::<Vec<_>>();
+	tags.sort();
+	tags
 }
 
 fn is_fence(line: &str) -> bool {
@@ -417,6 +569,66 @@ mod tests {
 		assert_eq!(tags[0].count, 2);
 		assert_eq!(tags[1].name, "日本語/sub");
 		assert_eq!(tags[1].count, 1);
+	}
+
+	#[test]
+	fn advanced_search_filters_by_path_tag_and_phrase() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::create_dir_all(temp.path().join("notes").join("work")).unwrap();
+		fs::create_dir_all(temp.path().join("notes").join("personal")).unwrap();
+		fs::write(
+			temp.path().join("notes").join("work").join("alpha.md"),
+			"---\ntags: [project/quire]\n---\nexact phrase here\nother words\n",
+		).unwrap();
+		fs::write(
+			temp.path().join("notes").join("personal").join("beta.md"),
+			"#project/personal\nexact phrase here\n",
+		).unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let index = workspace.build_search_index().unwrap();
+
+		let path_hits = index.search("path:work", 20);
+		assert!(!path_hits.is_empty());
+		assert!(path_hits.iter().all(|hit| hit.relative_path.contains("/work/")));
+
+		let tag_hits = index.search("tag:project", 20);
+		assert!(tag_hits.iter().any(|hit| hit.relative_path.ends_with("alpha.md")));
+		assert!(tag_hits.iter().any(|hit| hit.relative_path.ends_with("beta.md")));
+
+		let exact_tag_hits = index.search("tag:project/quire", 20);
+		assert!(exact_tag_hits.iter().all(|hit| hit.relative_path.ends_with("alpha.md")));
+
+		let combined = index.search("path:work tag:project/quire \"exact phrase\"", 20);
+		assert_eq!(combined.iter().filter(|hit| hit.kind == SearchKind::Content).count(), 1);
+		assert_eq!(combined.iter().find(|hit| hit.kind == SearchKind::Content).unwrap().line, Some(5));
+	}
+
+	#[test]
+	fn plain_multiword_search_keeps_legacy_literal_behavior() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("a.md"), "foo middle bar\nfoo bar\n").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let index = workspace.build_search_index().unwrap();
+
+		let hits = index.search("foo bar", 20);
+
+		assert_eq!(hits.iter().filter(|hit| hit.kind == SearchKind::Content).count(), 1);
+		assert_eq!(hits.iter().find(|hit| hit.kind == SearchKind::Content).unwrap().line, Some(2));
+	}
+
+	#[test]
+	fn advanced_filter_only_query_returns_documents() {
+		let temp = tempfile::tempdir().unwrap();
+		fs::write(temp.path().join("tagged.md"), "---\ntags: [alpha]\n---\nbody\n").unwrap();
+		fs::write(temp.path().join("other.md"), "body\n").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let index = workspace.build_search_index().unwrap();
+
+		let hits = index.search("tag:alpha", 20);
+
+		assert_eq!(hits.len(), 1);
+		assert_eq!(hits[0].kind, SearchKind::Filename);
+		assert_eq!(hits[0].relative_path, "tagged.md");
 	}
 
 	#[test]

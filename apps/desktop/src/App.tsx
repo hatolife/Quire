@@ -2071,7 +2071,7 @@ function App() {
 								type="search"
 								value={searchQuery()}
 								onInput={event => setSearchQuery(event.currentTarget.value)}
-								placeholder="ファイル名・本文を検索"
+								placeholder='検索 / path:notes tag:project "完全な語句"'
 							/>
 						</div>
 						<div class="tree explorer-body">
@@ -2085,7 +2085,7 @@ function App() {
 												<For each={tags()}>
 													{tag => (
 														<button class="tag-entry" onClick={() => {
-															setSearchQuery("#" + tag.name);
+															setSearchQuery("tag:" + tag.name);
 															explorerSearchInput?.focus();
 														}}>
 															<span>#{tag.name}</span>
