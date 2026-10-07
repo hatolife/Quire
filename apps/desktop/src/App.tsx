@@ -634,16 +634,17 @@ function App() {
 	};
 
 	const chooseWorkspace = async () => {
-		if(dirty() && !window.confirm("未保存の変更があります。破棄して別のWorkspaceを開きますか？")){ return; }
-		if(dirty()){
-			try{ await recoveryClear(); }catch(error){ updateStatus("Recovery clear error: " + String(error), "error", "recovery"); }
-		}
+		const discardCurrent = dirty();
+		if(discardCurrent && !window.confirm("未保存の変更があります。破棄して別のWorkspaceを開きますか？")){ return; }
 		const selected = await open({
 			directory: true,
 			multiple: false,
 			title: "Quire Workspaceを開く",
 		});
 		if(typeof selected !== "string"){ return; }
+		if(discardCurrent){
+			try{ await recoveryClear(); }catch(error){ updateStatus("Recovery clear error: " + String(error), "error", "recovery"); }
+		}
 		setRecoveryTrackingReady(false);
 		if(recoveryTimer !== undefined){ window.clearTimeout(recoveryTimer); recoveryTimer = undefined; }
 		try{
