@@ -14,6 +14,7 @@ type Props = {
 	active: boolean;
 	navigateTo?: string;
 	onStatus: (message: string) => void;
+	onUrlChange?: (url: string) => void;
 };
 
 function normalizeUrl(value: string): string | null {
@@ -62,6 +63,7 @@ export default function BrowserPane(props: Props) {
 			if(url){
 				setCurrentUrl(url);
 				setUrlDraft(url);
+				props.onUrlChange?.(url);
 			}
 		}catch{
 			// The WebView can disappear while closing or being recreated.
@@ -90,6 +92,7 @@ export default function BrowserPane(props: Props) {
 			setBusy(false);
 			setCurrentUrl(url);
 			setUrlDraft(url);
+			props.onUrlChange?.(url);
 			props.onStatus("Browser opened: " + url);
 			void syncCurrentUrl();
 			if(props.active){
@@ -112,6 +115,7 @@ export default function BrowserPane(props: Props) {
 				await browserNavigate(url);
 				setCurrentUrl(url);
 				setUrlDraft(url);
+				props.onUrlChange?.(url);
 			}else{
 				await createBrowser(url);
 			}

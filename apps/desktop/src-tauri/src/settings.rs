@@ -12,6 +12,8 @@ pub struct DesktopSettings {
 	pub last_document: Option<String>,
 	pub auto_snapshot_enabled: bool,
 	pub auto_snapshot_delay_seconds: u64,
+	pub last_right_pane: String,
+	pub last_browser_url: Option<String>,
 }
 
 impl Default for DesktopSettings {
@@ -23,6 +25,8 @@ impl Default for DesktopSettings {
 			last_document: None,
 			auto_snapshot_enabled: true,
 			auto_snapshot_delay_seconds: 5,
+			last_right_pane: "preview".to_string(),
+			last_browser_url: None,
 		}
 	}
 }

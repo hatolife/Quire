@@ -68,6 +68,8 @@ export type DesktopSettings = {
 	lastDocument?: string | null;
 	autoSnapshotEnabled: boolean;
 	autoSnapshotDelaySeconds: number;
+	lastRightPane: string;
+	lastBrowserUrl?: string | null;
 };
 
 export type LogEntry = {

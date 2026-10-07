@@ -547,6 +547,8 @@ function App() {
 		document()?.relativePath;
 		autoSnapshotEnabled();
 		autoSnapshotDelaySeconds();
+		rightPaneMode();
+		browserTargetUrl();
 		scheduleSettingsSave();
 	});
 
@@ -606,6 +608,8 @@ function App() {
 		lastDocument: document()?.relativePath ?? null,
 		autoSnapshotEnabled: autoSnapshotEnabled(),
 		autoSnapshotDelaySeconds: autoSnapshotDelaySeconds(),
+		lastRightPane: rightPaneMode(),
+		lastBrowserUrl: browserTargetUrl() ?? null,
 	});
 
 	const persistSettings = async () => {
@@ -633,6 +637,10 @@ function App() {
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
 				setAutoSnapshotEnabled(settings.autoSnapshotEnabled);
 				setAutoSnapshotDelaySeconds(Math.max(1, Math.min(300, settings.autoSnapshotDelaySeconds)));
+				setRightPaneMode(settings.lastRightPane === "browser" ? "browser" : "preview");
+				if(settings.lastBrowserUrl && /^https?:\/\//i.test(settings.lastBrowserUrl)){
+					setBrowserTargetUrl(settings.lastBrowserUrl);
+				}
 				if(settings.lastWorkspace){
 					try{
 						const opened = await workspaceOpen(settings.lastWorkspace);
@@ -1491,6 +1499,7 @@ function App() {
 								<BrowserPane
 									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !settingsOpen() && !logOpen() && !recoveryDraft()}
 									navigateTo={browserTargetUrl()}
+									onUrlChange={url => setBrowserTargetUrl(url)}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
 								/>
 							</div>
