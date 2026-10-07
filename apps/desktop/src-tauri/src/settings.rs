@@ -32,6 +32,8 @@ pub struct DesktopSettings {
 	pub history_retention_snapshots: usize,
 	pub template_directory: String,
 	pub layout_presets: Vec<LayoutPreset>,
+	pub daily_notes_directory: String,
+	pub daily_note_template: String,
 	pub last_right_pane: String,
 	pub last_browser_url: Option<String>,
 }
@@ -53,6 +55,8 @@ impl Default for DesktopSettings {
 			history_retention_snapshots: 200,
 			template_directory: "Templates".to_string(),
 			layout_presets: Vec::new(),
+			daily_notes_directory: "Daily".to_string(),
+			daily_note_template: "Templates/Daily.md".to_string(),
 			last_right_pane: "preview".to_string(),
 			last_browser_url: None,
 		}

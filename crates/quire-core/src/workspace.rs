@@ -131,6 +131,29 @@ impl Workspace {
 		Ok(entries)
 	}
 
+	pub fn ensure_directory(&self, relative_directory: &str) -> Result<String, WorkspaceError> {
+		let relative = Path::new(relative_directory);
+		if relative.as_os_str().is_empty() {
+			return Ok(String::new());
+		}
+		if relative.is_absolute()
+			|| relative.components().any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
+			|| relative.components().any(|component| matches!(component, Component::Normal(name) if name == ".git"))
+		{
+			return Err(WorkspaceError::InvalidRelativePath(relative_directory.to_string()));
+		}
+		let target = self.root.join(relative);
+		fs::create_dir_all(&target)?;
+		let canonical = fs::canonicalize(&target)?;
+		if !canonical.starts_with(&self.root) || !canonical.is_dir() {
+			return Err(WorkspaceError::InvalidRelativePath(relative_directory.to_string()));
+		}
+		let relative = canonical
+			.strip_prefix(&self.root)
+			.map_err(|_| WorkspaceError::InvalidRelativePath(relative_directory.to_string()))?;
+		Ok(portable_path(relative))
+	}
+
 	pub fn markdown_documents_under(&self, relative_directory: &str) -> Result<Vec<String>, WorkspaceError> {
 		let directory = match self.resolve_existing(relative_directory) {
 			Ok(directory) => directory,
@@ -439,6 +462,19 @@ mod tests {
 
 		assert!(matches!(
 			workspace.list_directory("../"),
+			Err(WorkspaceError::InvalidRelativePath(_))
+		));
+	}
+
+	#[test]
+	fn ensure_directory_creates_nested_path_and_rejects_escape() {
+		let temp = tempfile::tempdir().unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+
+		assert_eq!(workspace.ensure_directory("Daily/2026").unwrap(), "Daily/2026");
+		assert!(temp.path().join("Daily").join("2026").is_dir());
+		assert!(matches!(
+			workspace.ensure_directory("../outside"),
 			Err(WorkspaceError::InvalidRelativePath(_))
 		));
 	}

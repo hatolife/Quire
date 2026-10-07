@@ -41,6 +41,7 @@ import {
 	settingsLoad,
 	settingsSave,
 	workspaceDocuments,
+	workspaceEnsureDirectory,
 	workspaceGraph,
 	workspaceList,
 	workspaceOpen,
@@ -862,6 +863,8 @@ function App() {
 	const [historyRetentionSnapshots, setHistoryRetentionSnapshots] = createSignal(200);
 	const [templateDirectory, setTemplateDirectory] = createSignal("Templates");
 	const [layoutPresets, setLayoutPresets] = createSignal<LayoutPreset[]>([]);
+	const [dailyNotesDirectory, setDailyNotesDirectory] = createSignal("Daily");
+	const [dailyNoteTemplate, setDailyNoteTemplate] = createSignal("Templates/Daily.md");
 	const [templatePickerOpen, setTemplatePickerOpen] = createSignal(false);
 	const [templates, setTemplates] = createSignal<string[]>([]);
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser" | "graph">("preview");
@@ -1363,6 +1366,8 @@ function App() {
 		historyRetentionSnapshots();
 		templateDirectory();
 		layoutPresets();
+		dailyNotesDirectory();
+		dailyNoteTemplate();
 		rightPaneMode();
 		browserTargetUrl();
 		scheduleSettingsSave();
@@ -1455,6 +1460,8 @@ function App() {
 		historyRetentionSnapshots: historyRetentionSnapshots(),
 		templateDirectory: templateDirectory(),
 		layoutPresets: layoutPresets(),
+		dailyNotesDirectory: dailyNotesDirectory(),
+		dailyNoteTemplate: dailyNoteTemplate(),
 		lastRightPane: rightPaneMode(),
 		lastBrowserUrl: browserTargetUrl() ?? null,
 	});
@@ -1491,6 +1498,8 @@ function App() {
 				setHistoryRetentionSnapshots(Math.max(10, Math.min(10000, settings.historyRetentionSnapshots)));
 				setTemplateDirectory(settings.templateDirectory?.trim() || "Templates");
 				setLayoutPresets(settings.layoutPresets ?? []);
+				setDailyNotesDirectory(settings.dailyNotesDirectory?.trim() || "Daily");
+				setDailyNoteTemplate(settings.dailyNoteTemplate?.trim() ?? "");
 				setRightPaneMode(settings.lastRightPane === "browser" ? "browser" : settings.lastRightPane === "graph" ? "graph" : "preview");
 				if(settings.lastBrowserUrl && /^https?:\/\//i.test(settings.lastBrowserUrl)){
 					setBrowserTargetUrl(settings.lastBrowserUrl);
@@ -1585,6 +1594,11 @@ function App() {
 			if(!event.shiftKey && key === "o"){
 				event.preventDefault();
 				void chooseWorkspace();
+				return;
+			}
+			if(event.shiftKey && key === "d"){
+				event.preventDefault();
+				if(workspace()){ void openDailyNote(); }
 				return;
 			}
 			if(event.shiftKey && key === "n"){
@@ -2019,6 +2033,48 @@ function App() {
 		}
 	};
 
+	const openDailyNote = async () => {
+		if(!workspace()){ return; }
+		if(!await prepareToLeaveDocument("未保存の変更があります。保存または破棄してDaily Noteを開きますか？")){ return; }
+		const now = new Date();
+		const pad = (value: number) => String(value).padStart(2, "0");
+		const date = now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+		const directory = dailyNotesDirectory().trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+		const relativePath = (directory ? directory + "/" : "") + date + ".md";
+
+		try{
+			try{
+				await openDocument(relativePath);
+				return;
+			}catch{
+				// Missing today's note is expected on first open.
+			}
+
+			if(directory){ await workspaceEnsureDirectory(directory); }
+			let content = "";
+			const templatePath = dailyNoteTemplate().trim().replace(/\\/g, "/");
+			if(templatePath){
+				try{
+					const template = await documentOpen(templatePath);
+					content = expandTemplate(template.content, relativePath);
+				}catch(error){
+					updateStatus("Daily Note Templateを読めないため空のnoteを作成します: " + String(error), "warn", "template");
+				}
+			}
+			const created = await documentCreateWithContent(relativePath, content);
+			await refreshExplorer();
+			setDocument(created);
+			addOpenDocument(created.relativePath);
+			setDraft(contentForEditor(created.content));
+			setExternalConflict(false);
+			setBacklinks([]);
+			invalidateSearchIndex("Daily Note create");
+			updateStatus("Daily Noteを作成しました: " + created.relativePath, "info", "daily-note");
+		}catch(error){
+			updateStatus("Daily Note error: " + String(error), "error", "daily-note");
+		}
+	};
+
 	const moveCurrentDocument = async () => {
 		const current = document();
 		if(!current || dirty()){ 
@@ -2445,6 +2501,14 @@ function App() {
 			shortcut: "Ctrl+P",
 			enabled: workspace() !== null,
 			run: () => openQuickOpen(),
+		},
+		{
+			id: "document.daily.open",
+			title: "今日のDaily Noteを開く",
+			keywords: "daily note today journal",
+			shortcut: "Ctrl+Shift+D",
+			enabled: workspace() !== null,
+			run: () => openDailyNote(),
 		},
 		{
 			id: "document.create.template",
@@ -2895,6 +2959,19 @@ function App() {
 									/>
 								</label>
 								<div class="settings-summary">外部変更Conflictを検出したDocumentは自動保存しません。</div>
+							</section>
+							<section class="settings-section">
+								<h3>Daily Notes</h3>
+								<label class="settings-field">
+									<span>保存directory</span>
+									<input type="text" value={dailyNotesDirectory()} onInput={event => setDailyNotesDirectory(event.currentTarget.value)} placeholder="Daily" />
+								</label>
+								<label class="settings-field">
+									<span>Template</span>
+									<input type="text" value={dailyNoteTemplate()} onInput={event => setDailyNoteTemplate(event.currentTarget.value)} placeholder="Templates/Daily.md" />
+								</label>
+								<div class="settings-summary">ファイル名は YYYY-MM-DD.md。Templateが存在しない場合は空のnoteを作成します。</div>
+								<button disabled={!workspace()} onClick={() => void openDailyNote()}>今日のDaily Noteを開く</button>
 							</section>
 							<section class="settings-section">
 								<h3>Templates</h3>

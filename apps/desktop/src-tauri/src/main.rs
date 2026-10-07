@@ -53,6 +53,13 @@ fn workspace_open(path: String, state: tauri::State<'_, AppState>) -> Result<Wor
 }
 
 #[tauri::command]
+fn workspace_ensure_directory(relative_directory: String, state: tauri::State<'_, AppState>) -> Result<String, String> {
+	with_workspace(&state, |workspace| {
+		workspace.ensure_directory(&relative_directory).map_err(|error| error.to_string())
+	})
+}
+
+#[tauri::command]
 fn workspace_templates(relative_directory: String, state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
 	with_workspace(&state, |workspace| {
 		workspace.markdown_documents_under(&relative_directory).map_err(|error| error.to_string())
@@ -631,6 +638,7 @@ fn main() {
 		.manage(watcher::WatcherState::default())
 		.invoke_handler(tauri::generate_handler![
 			workspace_open,
+			workspace_ensure_directory,
 			workspace_templates,
 			workspace_list,
 			workspace_watch,

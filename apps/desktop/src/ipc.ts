@@ -107,6 +107,8 @@ export type DesktopSettings = {
 	historyRetentionSnapshots: number;
 	templateDirectory: string;
 	layoutPresets: LayoutPreset[];
+	dailyNotesDirectory: string;
+	dailyNoteTemplate: string;
 	lastRightPane: string;
 	lastBrowserUrl?: string | null;
 };
@@ -121,6 +123,10 @@ export type LogEntry = {
 
 export function workspaceOpen(path: string) {
 	return invoke<WorkspaceOpened>("workspace_open", { path });
+}
+
+export function workspaceEnsureDirectory(relativeDirectory: string) {
+	return invoke<string>("workspace_ensure_directory", { relativeDirectory });
 }
 
 export function workspaceTemplates(relativeDirectory: string) {
