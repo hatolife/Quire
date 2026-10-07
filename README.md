@@ -6,18 +6,22 @@ Quireは、ローカルの通常ファイルを正本とし、編集・検索・
 
 ## Status
 
-現在は Milestone 2: Application Skeleton の本体実装段階です。
+Milestone 2: Application Skeleton の完了条件は達成済みです。
 
-完成品として利用できる状態ではありませんが、初期Architecture Spikesを経て、Windows向けTauri/Solidアプリ本体の実装へ移行しています。
+現在は **Milestone 3: Vertical Slice の機能実装を本体へ接続し、Milestone 4: Daily Use Alpha向けの堅牢化を並行して進めています。**
 
-現在の本体では、通常フォルダをWorkspaceとして開き、Markdownを選択・編集・Preview・保存する縦切り実装を進めています。
+本体には、通常フォルダをそのままWorkspaceとして開く処理に加え、Neovim編集、Markdown Preview、Document作成/移動/削除、画像追加、Wiki Link/backlink、file watcher、全文検索、History Snapshot/比較/復元、Browser pane、session restore、Command Palette、未保存buffer recovery等が入っています。
+
+Milestone 3の実装項目は一通り接続済みですが、完了条件に含まれる「実際の個人文書フォルダを一週間程度Quire中心で扱う」実運用確認はまだ行っていないため、Milestone 3完了とはしていません。
+
+Windows CIでは `quire-core` の自動テスト、Tauri production build、package生成を継続検証しています。
 
 主要なArchitecture Spike:
 
 - Neovim `--embed` + `ext_linegrid`。
 - Tauri上の複数WebView / Browser pane。
 - WebView2 browser extensions。
-- 既存Git repositoryを汚さない履歴Snapshot。
+- ユーザーGit状態を壊さない履歴Snapshot。
 - 外部ファイル変更の検出と競合保護。
 
 ## Design documents

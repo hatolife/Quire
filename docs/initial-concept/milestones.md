@@ -250,6 +250,8 @@ Indexが追従すること。
 
 ### 現在の進捗
 
+**完了条件は達成済み。**
+
 2026-10-06に本体実装を開始した。
 
 初期構成:
@@ -370,6 +372,46 @@ Quireを起動し、既存フォルダをWorkspaceとして開き、Markdownを�
 
 ## Milestone 3: Vertical Slice
 
+### 現在の進捗
+
+2026-10-07時点で、下記の「実装内容」に列挙した機能はすべて本体へ接続済み。
+
+追加で、Milestone 4へ向けた堅牢化も一部先行実装している。
+
+- Document create / rename / move / delete。
+- Document移動時のWiki Link追従更新。alias / heading保持、code fence除外、失敗時rollback。
+- 画像AssetをDocument横の `_assets/` へ安全に取り込み、Neovim cursor位置へMarkdown linkを挿入。
+- file watcherによる外部変更検出。clean Documentは再読込し、dirty bufferは上書きせずConflict表示。
+- filename / full-text search。Workspace open時に再生成可能なmemory indexを構築し、watcher変更時にreindex。
+- Wiki Link navigation / backlink。
+- Quire専用の外部bare Git repositoryを使うHistory。ユーザーの `.git` / HEAD / branch / index / staged状態を変更しない。
+- manual / safety / debounced auto Snapshot。
+- Snapshot list / 現在Documentとの内容比較 / file restore。
+- 同一native Window内のBrowser child WebView。remote WebViewへQuireのTauri IPC権限を渡さない。
+- PreviewのHTTP(S) linkをBrowser paneへ送り、Quire本体WebViewを外部URLへ遷移させない。
+- pane layout persistence / last Workspace / last Document session restore。
+- Command Paletteと主要keyboard shortcut。
+- app-localな未保存buffer Recovery。
+- History操作の直列化、同一tree Snapshotの重複抑制、Windows nested pathの自動テスト。
+
+最新のWindows CI確認基準:
+
+```text
+b9eceeda3f91db9dfe64bc7d9eb6df992295c637
+```
+
+このcommitでは `quire-core` 27テスト、Tauri production build、package生成、artifact uploadが成功している。
+
+Windows artifact:
+
+```text
+quire-desktop-windows-v0.0.1.20261007100547.b9eceed
+```
+
+Milestone 3の機能一覧は埋まったが、完了条件にある「実際の個人文書フォルダを一週間程度Quire中心で扱う」は未確認である。
+
+そのため、Milestone 3はまだ完了扱いにしない。
+
 ### 目的
 
 Quireの基本ループを一本につなぐ。
@@ -403,6 +445,25 @@ Quireの基本ループを一本につなぐ。
 Quireを使うために手動Git操作や手動Index生成を必要としないこと。
 
 ## Milestone 4: Daily Use Alpha
+
+### 現在の進捗
+
+Milestone 3の実運用確認待ちで停止せず、実機確認を必要としない範囲から先行着手している。
+
+実装済みまたは着手済み:
+
+- memory search index。
+- Command Palette / keyboard操作。
+- settings UI。
+- Auto Snapshot設定。
+- 未保存buffer Recovery。
+- History比較UI。
+- Browser overlay時のchild WebView hide。
+- Preview linkの安全なrouting。
+- diagnostics/log。
+- Windows package CI。
+
+引き続きstartup / large Workspace性能、History保持方針、link/index効率、Browser UX、Obsidian互換記法等を自動検証可能な範囲から進める。
 
 ### 目的
 
@@ -537,22 +598,17 @@ CIやパッケージング機能の検証でSemVerが必須な場合だけ `v0.0
 
 ## 直近の次作業
 
-Milestone 2のApplication Skeletonは主要構成が揃った。
+Milestone 3の機能実装は一通り本体へ接続済みであり、実機を触れない期間もDaily Use Alpha向けの実装を継続する。
 
-最新Windows artifactで次を確認する。
+優先順位:
 
-1. Neovim Editorの既存操作が退行していない。
-2. status barクリックでlog drawerが開き、Workspace open / Document open / save / error等が記録される。
-3. Markdownのrelative imageがPreviewに表示される。
-	- 同じdirectoryの画像。
-	- subdirectoryの画像。
-	- `../images/foo.png` のようにWorkspace内を遡る画像。
-	- Workspace外へ出るpathは読み込まれない。
-4. pane layoutの保存・復元。
-5. 未保存状態で別Workspaceを開く場合に確認が出る。
-6. 未保存状態でWindowを閉じる場合に確認が出る。
-7. Neovim異常終了時に再起動UIが表示され、disk上のDocumentを開き直せる。
+1. データ損失防止とRecovery経路の追加検証。
+2. Document rename / move時の通常Markdown link追従。
+3. startup時の全Workspace同期index構築を見直し、大規模WorkspaceでもUI openを不必要に待たせない。
+4. backlink / link graphを再生成可能indexへ寄せ、毎回全Markdownをscanする処理を減らす。
+5. Historyの保持期間 / GC / 除外設定 / restore UXを詰める。
+6. Browser back / forward / reload / session等のUXを本体へ追加する。
+7. front matter / tag / embed / callout等、既存Obsidian文書を壊さず扱う互換レイヤを追加する。
+8. 最新Windows artifactで実運用可能になった時点で、Milestone 3の一週間利用条件を確認する。
 
-実機確認後、Milestone 2を完了扱いにし、Milestone 3: Vertical Sliceへ進む。
-
-Milestone 3ではDocument create / rename / move / delete、file watcher、search、History Snapshot、Browser pane等を本体へ順次追加する。
+実機確認が必要な項目は記録して保留し、自動テスト・CI・静的に詰められる実装を先に進める。

@@ -1424,7 +1424,7 @@ function App() {
 			<footer class="statusbar statusbar-clickable" onClick={toggleLogs} title="クリックで直近ログを表示">
 				<span>{status()}</span>
 				<span class="toolbar-spacer" />
-				<span>Milestone 2 / Application Skeleton</span>
+				<span>Milestone 3 / Vertical Slice</span>
 			</footer>
 		</div>
 	);
