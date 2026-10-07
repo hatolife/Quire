@@ -829,6 +829,8 @@ function App() {
 	const [entries, setEntries] = createSignal<WorkspaceEntry[]>([]);
 	const [document, setDocument] = createSignal<Document | null>(null);
 	const [openDocuments, setOpenDocuments] = createSignal<string[]>([]);
+	const [documentNavigation, setDocumentNavigation] = createSignal<string[]>([]);
+	const [documentNavigationIndex, setDocumentNavigationIndex] = createSignal(-1);
 	const [draft, setDraft] = createSignal("");
 	const [status, setStatus] = createSignal("Workspaceを開いてください");
 	const [saving, setSaving] = createSignal(false);
@@ -1521,6 +1523,8 @@ function App() {
 								const restored = await documentOpen(settings.lastDocument);
 								setDocument(restored);
 								addOpenDocument(restored.relativePath);
+								setDocumentNavigation([restored.relativePath]);
+								setDocumentNavigationIndex(0);
 								setDraft(contentForEditor(restored.content));
 								setInitialEditorLine(undefined);
 								void refreshBacklinks(restored.relativePath);
@@ -1557,8 +1561,20 @@ function App() {
 			});
 
 		commandKeyHandler = (event: KeyboardEvent) => {
-			if(!event.ctrlKey || event.altKey){ return; }
 			const key = event.key.toLowerCase();
+			if(event.altKey && !event.ctrlKey && !event.shiftKey){
+				if(key === "arrowleft"){
+					event.preventDefault();
+					void navigateDocumentHistory(-1);
+					return;
+				}
+				if(key === "arrowright"){
+					event.preventDefault();
+					void navigateDocumentHistory(1);
+					return;
+				}
+			}
+			if(!event.ctrlKey || event.altKey){ return; }
 			if(key === "tab"){
 				const paths = openDocuments();
 				const currentPath = document()?.relativePath;
@@ -1801,6 +1817,8 @@ function App() {
 			setWorkspace(opened.info);
 			setEntries(opened.entries);
 			setOpenDocuments([]);
+			setDocumentNavigation([]);
+			setDocumentNavigationIndex(-1);
 			setSearchIndexReady(false);
 			void rebuildSearchIndex("workspace open");
 			assetCache.clear();
@@ -1940,6 +1958,31 @@ function App() {
 		return /\.md(?:own)?$/i.test(trimmed) ? trimmed : trimmed + ".md";
 	};
 
+	const recordDocumentNavigation = (relativePath: string) => {
+		setDocumentNavigation(paths => {
+			const currentIndex = documentNavigationIndex();
+			if(currentIndex >= 0 && paths[currentIndex] === relativePath){ return paths; }
+			let next = [...paths.slice(0, currentIndex + 1), relativePath];
+			if(next.length > 100){ next = next.slice(next.length - 100); }
+			setDocumentNavigationIndex(next.length - 1);
+			return next;
+		});
+	};
+
+	const replaceDocumentNavigation = (from: string, to: string) => {
+		setDocumentNavigation(paths => paths.map(path => path === from ? to : path));
+	};
+
+	const removeDocumentNavigation = (relativePath: string) => {
+		setDocumentNavigation(paths => {
+			const oldIndex = documentNavigationIndex();
+			const before = paths.slice(0, Math.max(0, oldIndex)).filter(path => path !== relativePath).length;
+			const next = paths.filter(path => path !== relativePath);
+			setDocumentNavigationIndex(next.length === 0 ? -1 : Math.min(before, next.length - 1));
+			return next;
+		});
+	};
+
 	const addOpenDocument = (relativePath: string) => {
 		setOpenDocuments(paths => paths.includes(relativePath) ? paths : [...paths, relativePath]);
 	};
@@ -1972,6 +2015,8 @@ function App() {
 			await refreshExplorer();
 			setDocument(created);
 			addOpenDocument(created.relativePath);
+			recordDocumentNavigation(created.relativePath);
+			recordDocumentNavigation(created.relativePath);
 			setDraft(contentForEditor(created.content));
 			setExternalConflict(false);
 			setBacklinks([]);
@@ -2024,6 +2069,7 @@ function App() {
 			await refreshExplorer();
 			setDocument(created);
 			addOpenDocument(created.relativePath);
+			recordDocumentNavigation(created.relativePath);
 			setDraft(contentForEditor(created.content));
 			setExternalConflict(false);
 			setBacklinks([]);
@@ -2064,6 +2110,7 @@ function App() {
 			await refreshExplorer();
 			setDocument(created);
 			addOpenDocument(created.relativePath);
+			recordDocumentNavigation(created.relativePath);
 			setDraft(contentForEditor(created.content));
 			setExternalConflict(false);
 			setBacklinks([]);
@@ -2091,6 +2138,7 @@ function App() {
 			await refreshExplorer();
 			setDocument(moved.document);
 			replaceOpenDocument(current.relativePath, moved.document.relativePath);
+			replaceDocumentNavigation(current.relativePath, moved.document.relativePath);
 			setDraft(contentForEditor(moved.document.content));
 			setExternalConflict(false);
 			void refreshBacklinks(moved.document.relativePath);
@@ -2114,6 +2162,7 @@ function App() {
 			if(!await createSafetySnapshot("Before delete " + current.relativePath)){ return; }
 			await documentDelete(current.relativePath, current.revision);
 			removeOpenDocument(current.relativePath);
+			removeDocumentNavigation(current.relativePath);
 			setDocument(null);
 			setDraft("");
 			setExternalConflict(false);
@@ -2142,7 +2191,7 @@ function App() {
 		return window.confirm(prompt);
 	};
 
-	const openDocument = async (relativePath: string, line?: number, heading?: string) => {
+	const openDocument = async (relativePath: string, line?: number, heading?: string, recordNavigation = true): Promise<boolean> => {
 		const current = document();
 		if(current?.relativePath === relativePath && heading){
 			const headingLine = findFragmentLine(draft(), heading);
@@ -2156,15 +2205,16 @@ function App() {
 			}else{
 				updateStatus("見出しが見つかりません: #" + decodeHeadingFragment(heading), "warn", "links");
 			}
-			return;
+			return true;
 		}
-		if(!await prepareToLeaveDocument("未保存の変更があります。破棄して別の文書を開きますか？")){ return; }
+		if(!await prepareToLeaveDocument("未保存の変更があります。破棄して別の文書を開きますか？")){ return false; }
 		try{
 			const opened = await documentOpen(relativePath);
 			const content = contentForEditor(opened.content);
 			const targetLine = line ?? (heading ? findFragmentLine(content, heading) : undefined);
 			setDocument(opened);
 			addOpenDocument(opened.relativePath);
+			if(recordNavigation){ recordDocumentNavigation(opened.relativePath); }
 			setDraft(content);
 			setExternalConflict(false);
 			setInitialEditorLine(targetLine);
@@ -2177,8 +2227,20 @@ function App() {
 			}else{
 				updateStatus(relativePath, "info", "document");
 			}
+			return true;
 		}catch(error){
 			updateStatus("Document open error: " + String(error), "error", "document");
+			return false;
+		}
+	};
+
+	const navigateDocumentHistory = async (delta: -1 | 1) => {
+		const paths = documentNavigation();
+		const targetIndex = documentNavigationIndex() + delta;
+		if(targetIndex < 0 || targetIndex >= paths.length){ return; }
+		const target = paths[targetIndex];
+		if(await openDocument(target, undefined, undefined, false)){
+			setDocumentNavigationIndex(targetIndex);
 		}
 	};
 
@@ -2466,6 +2528,22 @@ function App() {
 			run: () => saveDocument(),
 		},
 		{
+			id: "document.navigation.back",
+			title: "前に開いたDocumentへ戻る",
+			keywords: "navigation history back previous",
+			shortcut: "Alt+Left",
+			enabled: documentNavigationIndex() > 0,
+			run: () => navigateDocumentHistory(-1),
+		},
+		{
+			id: "document.navigation.forward",
+			title: "次に開いたDocumentへ進む",
+			keywords: "navigation history forward next",
+			shortcut: "Alt+Right",
+			enabled: documentNavigationIndex() >= 0 && documentNavigationIndex() < documentNavigation().length - 1,
+			run: () => navigateDocumentHistory(1),
+		},
+		{
 			id: "tabs.next",
 			title: "次のDocumentタブ",
 			keywords: "tab next document",
@@ -2619,6 +2697,10 @@ function App() {
 				<strong>Quire</strong>
 				<button onClick={() => void chooseWorkspace()}>Workspaceを開く</button>
 				<button title="設定" onClick={() => setSettingsOpen(true)}>設定</button>
+				<Show when={workspace()}>
+					<button title="前に開いたDocument (Alt+Left)" disabled={documentNavigationIndex() <= 0} onClick={() => void navigateDocumentHistory(-1)}>←</button>
+					<button title="次に開いたDocument (Alt+Right)" disabled={documentNavigationIndex() < 0 || documentNavigationIndex() >= documentNavigation().length - 1} onClick={() => void navigateDocumentHistory(1)}>→</button>
+				</Show>
 				<Show when={workspace()}>{value => <span class="workspace-path">{value().root}</span>}</Show>
 				<span class="toolbar-spacer" />
 				<Show when={workspace()}>
