@@ -104,6 +104,13 @@ impl HistoryStore {
 
 		let tree = self.git_with_index(&["write-tree"], &index)?;
 		let parent = self.resolve_latest().ok();
+		if let Some(parent) = parent.as_deref() {
+			let parent_tree = self.git(&["rev-parse", &format!("{parent}^{{tree}}")])?;
+			if parent_tree.trim() == tree.trim() {
+				let _ = fs::remove_file(index);
+				return self.snapshot(parent);
+			}
+		}
 		let mut args = vec!["commit-tree".to_string(), tree.trim().to_string()];
 		if let Some(parent) = parent.as_deref() {
 			args.push("-p".to_string());
@@ -362,6 +369,42 @@ mod tests {
 
 		assert_eq!(fs::read(workspace.join("note.md")).unwrap(), b"line1\r\nline2\r\n");
 		assert_eq!(store.list_snapshots(10).unwrap().len(), 2);
+	}
+
+	#[test]
+	fn unchanged_snapshot_reuses_latest_commit() {
+		if !git_available(){ return; }
+		let temp = tempfile::tempdir().unwrap();
+		let workspace = temp.path().join("workspace");
+		let history = temp.path().join("history.git");
+		fs::create_dir(&workspace).unwrap();
+		fs::write(workspace.join("note.md"), "same\n").unwrap();
+		let store = HistoryStore::open(&workspace, &history).unwrap();
+
+		let first = store.create_snapshot("First").unwrap();
+		let second = store.create_snapshot("Duplicate").unwrap();
+
+		assert_eq!(first.id, second.id);
+		assert_eq!(store.list_snapshots(10).unwrap().len(), 1);
+	}
+
+	#[test]
+	fn nested_snapshot_round_trip_preserves_bytes() {
+		if !git_available(){ return; }
+		let temp = tempfile::tempdir().unwrap();
+		let workspace = temp.path().join("workspace");
+		let history = temp.path().join("history.git");
+		fs::create_dir_all(workspace.join("nested").join("deep")).unwrap();
+		let path = workspace.join("nested").join("deep").join("note.md");
+		fs::write(&path, b"nested\r\nbytes\r\n").unwrap();
+		let store = HistoryStore::open(&workspace, &history).unwrap();
+
+		let snapshot = store.create_snapshot("Nested").unwrap();
+		fs::write(&path, b"changed\n").unwrap();
+		let revision = blake3::hash(&fs::read(&path).unwrap()).to_hex().to_string();
+		store.restore_file(&snapshot.id, "nested/deep/note.md", Some(&revision)).unwrap();
+
+		assert_eq!(fs::read(path).unwrap(), b"nested\r\nbytes\r\n");
 	}
 
 	#[test]
