@@ -72,6 +72,8 @@ export type DesktopSettings = {
 	lastWorkspace?: string | null;
 	lastDocument?: string | null;
 	openDocuments: string[];
+	documentAutoSaveEnabled: boolean;
+	documentAutoSaveDelayMs: number;
 	autoSnapshotEnabled: boolean;
 	autoSnapshotDelaySeconds: number;
 	historyRetentionSnapshots: number;

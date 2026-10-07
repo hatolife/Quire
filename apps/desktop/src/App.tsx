@@ -740,6 +740,7 @@ function App() {
 	let searchTimer: number | undefined;
 	let settingsTimer: number | undefined;
 	let autoSnapshotTimer: number | undefined;
+	let documentAutoSaveTimer: number | undefined;
 	let recoveryTimer: number | undefined;
 	let watchGeneration = 0;
 	let searchReindexPending = false;
@@ -776,6 +777,8 @@ function App() {
 	const [historyDocuments, setHistoryDocuments] = createSignal<{ snapshot: Snapshot; paths: string[] } | null>(null);
 	const [settingsReady, setSettingsReady] = createSignal(false);
 	const [settingsOpen, setSettingsOpen] = createSignal(false);
+	const [documentAutoSaveEnabled, setDocumentAutoSaveEnabled] = createSignal(true);
+	const [documentAutoSaveDelayMs, setDocumentAutoSaveDelayMs] = createSignal(1000);
 	const [autoSnapshotEnabled, setAutoSnapshotEnabled] = createSignal(true);
 	const [autoSnapshotDelaySeconds, setAutoSnapshotDelaySeconds] = createSignal(5);
 	const [historyRetentionSnapshots, setHistoryRetentionSnapshots] = createSignal(200);
@@ -1200,12 +1203,37 @@ function App() {
 		workspace()?.root;
 		document()?.relativePath;
 		openDocuments();
+		documentAutoSaveEnabled();
+		documentAutoSaveDelayMs();
 		autoSnapshotEnabled();
 		autoSnapshotDelaySeconds();
 		historyRetentionSnapshots();
 		rightPaneMode();
 		browserTargetUrl();
 		scheduleSettingsSave();
+	});
+
+	createEffect(() => {
+		const enabled = documentAutoSaveEnabled();
+		const delay = documentAutoSaveDelayMs();
+		const isDirty = dirty();
+		const conflicted = externalConflict();
+		const isSaving = saving();
+		document()?.revision;
+		draft();
+
+		if(documentAutoSaveTimer !== undefined){
+			window.clearTimeout(documentAutoSaveTimer);
+			documentAutoSaveTimer = undefined;
+		}
+		if(!enabled || !isDirty || conflicted || isSaving || !document()){ return; }
+
+		documentAutoSaveTimer = window.setTimeout(() => {
+			documentAutoSaveTimer = undefined;
+			if(dirty() && !externalConflict() && !saving()){
+				void saveDocument();
+			}
+		}, delay);
 	});
 
 	createEffect(() => {
@@ -1263,6 +1291,8 @@ function App() {
 		lastWorkspace: workspace()?.root ?? null,
 		lastDocument: document()?.relativePath ?? null,
 		openDocuments: openDocuments(),
+		documentAutoSaveEnabled: documentAutoSaveEnabled(),
+		documentAutoSaveDelayMs: documentAutoSaveDelayMs(),
 		autoSnapshotEnabled: autoSnapshotEnabled(),
 		autoSnapshotDelaySeconds: autoSnapshotDelaySeconds(),
 		historyRetentionSnapshots: historyRetentionSnapshots(),
@@ -1293,6 +1323,8 @@ function App() {
 			.then(async settings => {
 				setExplorerWidth(Math.max(180, Math.min(420, settings.explorerWidth)));
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
+				setDocumentAutoSaveEnabled(settings.documentAutoSaveEnabled);
+				setDocumentAutoSaveDelayMs(Math.max(250, Math.min(10000, settings.documentAutoSaveDelayMs)));
 				setAutoSnapshotEnabled(settings.autoSnapshotEnabled);
 				setAutoSnapshotDelaySeconds(Math.max(1, Math.min(300, settings.autoSnapshotDelaySeconds)));
 				setHistoryRetentionSnapshots(Math.max(10, Math.min(10000, settings.historyRetentionSnapshots)));
@@ -1446,6 +1478,7 @@ function App() {
 		if(searchTimer !== undefined){ window.clearTimeout(searchTimer); }
 		if(settingsTimer !== undefined){ window.clearTimeout(settingsTimer); }
 		if(autoSnapshotTimer !== undefined){ window.clearTimeout(autoSnapshotTimer); }
+		if(documentAutoSaveTimer !== undefined){ window.clearTimeout(documentAutoSaveTimer); }
 		if(recoveryTimer !== undefined){ window.clearTimeout(recoveryTimer); }
 		void workspaceWatchStop();
 	});
@@ -2029,6 +2062,10 @@ function App() {
 	const saveDocument = async () => {
 		const current = document();
 		if(!current || !dirty() || saving()){ return; }
+		if(externalConflict()){
+			updateStatus("外部変更Conflict中のため保存しません。内容を確認してください。", "warn", "save");
+			return;
+		}
 		setSaving(true);
 		try{
 			const saved = await editorSave(current.revision);
@@ -2500,6 +2537,33 @@ function App() {
 							<button onClick={() => setSettingsOpen(false)}>閉じる</button>
 						</div>
 						<div class="settings-content">
+							<section class="settings-section">
+								<h3>Editor</h3>
+								<label class="settings-toggle">
+									<input
+										type="checkbox"
+										checked={documentAutoSaveEnabled()}
+										onChange={event => setDocumentAutoSaveEnabled(event.currentTarget.checked)}
+									/>
+									<span>Documentを自動保存</span>
+								</label>
+								<label class="settings-field">
+									<span>保存待ち時間（ms）</span>
+									<input
+										type="number"
+										min="250"
+										max="10000"
+										step="250"
+										value={documentAutoSaveDelayMs()}
+										disabled={!documentAutoSaveEnabled()}
+										onChange={event => {
+											const value = Number.parseInt(event.currentTarget.value, 10);
+											setDocumentAutoSaveDelayMs(Number.isFinite(value) ? Math.max(250, Math.min(10000, value)) : 1000);
+										}}
+									/>
+								</label>
+								<div class="settings-summary">外部変更Conflictを検出したDocumentは自動保存しません。</div>
+							</section>
 							<section class="settings-section">
 								<h3>History</h3>
 								<label class="settings-toggle">
