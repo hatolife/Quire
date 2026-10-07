@@ -10,6 +10,8 @@ pub struct DesktopSettings {
 	pub editor_ratio: f64,
 	pub last_workspace: Option<String>,
 	pub last_document: Option<String>,
+	pub auto_snapshot_enabled: bool,
+	pub auto_snapshot_delay_seconds: u64,
 }
 
 impl Default for DesktopSettings {
@@ -19,6 +21,8 @@ impl Default for DesktopSettings {
 			editor_ratio: 0.5,
 			last_workspace: None,
 			last_document: None,
+			auto_snapshot_enabled: true,
+			auto_snapshot_delay_seconds: 5,
 		}
 	}
 }

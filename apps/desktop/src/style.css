@@ -757,3 +757,82 @@ button.primary {
 	font: 12px/1.5 "Cascadia Mono", Consolas, monospace;
 	white-space: pre;
 }
+
+.settings-backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: 90;
+	display: grid;
+	place-items: center;
+	padding: 20px;
+	background: rgba(0, 0, 0, 0.38);
+}
+
+.settings-panel {
+	width: min(620px, 100%);
+	max-height: min(640px, 88vh);
+	display: grid;
+	grid-template-rows: 42px minmax(0, 1fr);
+	overflow: hidden;
+	background: #1b1b1b;
+	border: 1px solid #464646;
+	border-radius: 7px;
+	box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.settings-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 0 10px;
+	background: #202020;
+	border-bottom: 1px solid #333;
+}
+
+.settings-content {
+	overflow: auto;
+	padding: 14px;
+}
+
+.settings-section {
+	display: grid;
+	gap: 10px;
+	padding: 12px 0 18px;
+	border-bottom: 1px solid #303030;
+}
+
+.settings-section:last-child {
+	border-bottom: 0;
+}
+
+.settings-section h3 {
+	margin: 0;
+	font-size: 13px;
+}
+
+.settings-toggle,
+.settings-field {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: #ccc;
+	font-size: 12px;
+}
+
+.settings-field {
+	justify-content: space-between;
+}
+
+.settings-field input[type="number"] {
+	width: 90px;
+	padding: 4px 6px;
+	border: 1px solid #3a3a3a;
+	border-radius: 4px;
+	background: #111;
+	color: #ddd;
+}
+
+.settings-summary {
+	color: #888;
+	font-size: 12px;
+}

@@ -145,6 +145,9 @@ function App() {
 	const [snapshots, setSnapshots] = createSignal<Snapshot[]>([]);
 	const [historyComparison, setHistoryComparison] = createSignal<{ snapshot: Snapshot; content: string | null } | null>(null);
 	const [settingsReady, setSettingsReady] = createSignal(false);
+	const [settingsOpen, setSettingsOpen] = createSignal(false);
+	const [autoSnapshotEnabled, setAutoSnapshotEnabled] = createSignal(true);
+	const [autoSnapshotDelaySeconds, setAutoSnapshotDelaySeconds] = createSignal(5);
 	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser">("preview");
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
 	const preview = createMemo(() => renderPreview(draft()));
@@ -266,10 +269,17 @@ function App() {
 
 	const scheduleAutoSnapshot = (relativePath: string) => {
 		if(autoSnapshotTimer !== undefined){ window.clearTimeout(autoSnapshotTimer); }
+		if(!autoSnapshotEnabled()){ return; }
 		autoSnapshotTimer = window.setTimeout(() => {
 			autoSnapshotTimer = undefined;
 			void createHistorySnapshot("Auto save " + relativePath);
-		}, 5000);
+		}, autoSnapshotDelaySeconds() * 1000);
+	};
+
+	const resetPaneLayout = () => {
+		setExplorerWidth(260);
+		setEditorRatio(0.5);
+		scheduleSettingsSave();
 	};
 
 	const toggleHistory = () => {
@@ -331,6 +341,8 @@ function App() {
 		editorRatio();
 		workspace()?.root;
 		document()?.relativePath;
+		autoSnapshotEnabled();
+		autoSnapshotDelaySeconds();
 		scheduleSettingsSave();
 	});
 
@@ -359,6 +371,8 @@ function App() {
 		editorRatio: editorRatio(),
 		lastWorkspace: workspace()?.root ?? null,
 		lastDocument: document()?.relativePath ?? null,
+		autoSnapshotEnabled: autoSnapshotEnabled(),
+		autoSnapshotDelaySeconds: autoSnapshotDelaySeconds(),
 	});
 
 	const persistSettings = async () => {
@@ -384,6 +398,8 @@ function App() {
 			.then(async settings => {
 				setExplorerWidth(Math.max(180, Math.min(420, settings.explorerWidth)));
 				setEditorRatio(Math.max(0.25, Math.min(0.75, settings.editorRatio)));
+				setAutoSnapshotEnabled(settings.autoSnapshotEnabled);
+				setAutoSnapshotDelaySeconds(Math.max(1, Math.min(300, settings.autoSnapshotDelaySeconds)));
 				if(settings.lastWorkspace){
 					try{
 						const opened = await workspaceOpen(settings.lastWorkspace);
@@ -872,6 +888,12 @@ function App() {
 			run: () => setRightPaneMode("browser"),
 		},
 		{
+			id: "settings.show",
+			title: "設定を開く",
+			keywords: "settings preferences",
+			run: () => setSettingsOpen(true),
+		},
+		{
 			id: "logs.show",
 			title: "ログを表示",
 			keywords: "diagnostic log",
@@ -887,6 +909,7 @@ function App() {
 			<header class="toolbar">
 				<strong>Quire</strong>
 				<button onClick={() => void chooseWorkspace()}>Workspaceを開く</button>
+				<button title="設定" onClick={() => setSettingsOpen(true)}>設定</button>
 				<Show when={workspace()}>{value => <span class="workspace-path">{value().root}</span>}</Show>
 				<span class="toolbar-spacer" />
 				<Show when={workspace()}>
@@ -1045,12 +1068,58 @@ function App() {
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
 								<BrowserPane
-									active={rightPaneMode() === "browser"}
+									active={rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !settingsOpen() && !logOpen()}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
 								/>
 							</div>
 						</div>
 					</section>
+				</div>
+			</Show>
+
+			<Show when={settingsOpen()}>
+				<div class="settings-backdrop" onMouseDown={event => {
+					if(event.target === event.currentTarget){ setSettingsOpen(false); }
+				}}>
+					<div class="settings-panel">
+						<div class="settings-header">
+							<strong>Settings</strong>
+							<span class="toolbar-spacer" />
+							<button onClick={() => setSettingsOpen(false)}>閉じる</button>
+						</div>
+						<div class="settings-content">
+							<section class="settings-section">
+								<h3>History</h3>
+								<label class="settings-toggle">
+									<input
+										type="checkbox"
+										checked={autoSnapshotEnabled()}
+										onChange={event => setAutoSnapshotEnabled(event.currentTarget.checked)}
+									/>
+									<span>保存後にAuto Snapshotを作成</span>
+								</label>
+								<label class="settings-field">
+									<span>待ち時間（秒）</span>
+									<input
+										type="number"
+										min="1"
+										max="300"
+										value={autoSnapshotDelaySeconds()}
+										disabled={!autoSnapshotEnabled()}
+										onChange={event => {
+											const value = Number.parseInt(event.currentTarget.value, 10);
+											setAutoSnapshotDelaySeconds(Number.isFinite(value) ? Math.max(1, Math.min(300, value)) : 5);
+										}}
+									/>
+								</label>
+							</section>
+							<section class="settings-section">
+								<h3>Layout</h3>
+								<div class="settings-summary">Explorer {Math.round(explorerWidth())}px / Editor {Math.round(editorRatio() * 100)}%</div>
+								<button onClick={resetPaneLayout}>pane layoutを初期値へ戻す</button>
+							</section>
+						</div>
+					</div>
 				</div>
 			</Show>
 

@@ -60,6 +60,8 @@ export type DesktopSettings = {
 	editorRatio: number;
 	lastWorkspace?: string | null;
 	lastDocument?: string | null;
+	autoSnapshotEnabled: boolean;
+	autoSnapshotDelaySeconds: number;
 };
 
 export type LogEntry = {
