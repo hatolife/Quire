@@ -835,6 +835,7 @@ function App() {
 	let focusModeRestore: { explorer: boolean; right: boolean } | undefined;
 	const assetCache = new Map<string, Promise<string>>();
 	const floatingHandles = new Map<FloatingPaneKind, WebviewWindow>();
+	const approvedFloatingClose = new Set<string>();
 	const floatingUnlisteners: Array<() => void> = [];
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
@@ -1666,9 +1667,10 @@ function App() {
 			const floating = floatingHandles.get(payload.kind);
 			if(!floating || floatingPanels()[payload.kind] !== payload.label){ return; }
 			void (async () => {
-				if(payload.kind === "editor" && dirty()){
-					await saveDocument();
-					if(dirty()){ updateStatus("Editorを戻す前に未保存内容を解決してください。", "warn", "layout"); return; }
+				if(payload.kind === "editor"){
+					const saved = await saveDocument(true);
+					if(!saved){ updateStatus("Editorを戻す前に保存エラーを解決してください。", "warn", "layout"); return; }
+					approvedFloatingClose.add(payload.label);
 				}
 				await floating.close();
 			})().catch(error => updateStatus("Dock error: " + String(error), "error", "layout"));
@@ -2561,12 +2563,13 @@ function App() {
 		}
 	};
 
-	const saveDocument = async () => {
+	const saveDocument = async (force = false): Promise<boolean> => {
 		const current = document();
-		if(!current || !dirty() || saving()){ return; }
+		if(!current || saving()){ return false; }
+		if(!dirty() && !force){ return true; }
 		if(externalConflict()){
 			updateStatus("外部変更Conflict中のため保存しません。内容を確認してください。", "warn", "save");
-			return;
+			return false;
 		}
 		setSaving(true);
 		try{
@@ -2579,8 +2582,10 @@ function App() {
 			void refreshOneDocumentIndex(saved.relativePath, "Document save");
 			updateStatus(saved.relativePath + " を保存しました", "info", "save");
 			scheduleAutoSnapshot(saved.relativePath);
+			return true;
 		}catch(error){
 			updateStatus("Save error: " + String(error), "error", "save");
+			return false;
 		}finally{
 			setSaving(false);
 		}
@@ -2714,15 +2719,19 @@ function App() {
 			updateStatus("別ウィンドウの作成に失敗しました: " + String(event.payload), "error", "layout");
 		});
 		void floating.onCloseRequested(event => {
-			if(kind === "editor" && dirty()){
+			if(kind === "editor" && !approvedFloatingClose.has(label)){
 				event.preventDefault();
 				if(!saving()){
-					void saveDocument().then(() => {
-						if(!dirty()){ void floating.close(); }
+					void saveDocument(true).then(saved => {
+						if(saved){
+							approvedFloatingClose.add(label);
+							void floating.close();
+						}
 					});
 				}
 				return;
 			}
+			approvedFloatingClose.delete(label);
 			restoreFloatingPane(kind, label);
 		})
 			.catch(error => updateStatus("Floating window close handler: " + String(error), "error", "layout"));
