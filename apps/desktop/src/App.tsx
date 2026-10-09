@@ -2756,7 +2756,6 @@ function App() {
 	return (
 		<div class="app">
 			<header class="toolbar">
-				<strong>Quire</strong>
 				<button onClick={() => void chooseWorkspace()}>Workspaceを開く</button>
 				<button title="設定" onClick={() => setSettingsOpen(true)}>設定</button>
 				<Show when={workspace()}>
