@@ -39,6 +39,7 @@ export default function BrowserPane(props: Props) {
 	const [urlDraft, setUrlDraft] = createSignal("https://example.com/");
 	const [currentUrl, setCurrentUrl] = createSignal("https://example.com/");
 	const [busy, setBusy] = createSignal(false);
+	const webviewLabel = getCurrentWindow().label === "main" ? "browser-pane" : "browser-pane-" + getCurrentWindow().label;
 
 	const syncBounds = async () => {
 		if(!browser || !props.active){ return; }
@@ -59,7 +60,7 @@ export default function BrowserPane(props: Props) {
 	const syncCurrentUrl = async () => {
 		if(!browser){ return; }
 		try{
-			const url = await browserCurrentUrl();
+			const url = await browserCurrentUrl(webviewLabel);
 			if(url){
 				setCurrentUrl(url);
 				setUrlDraft(url);
@@ -77,7 +78,7 @@ export default function BrowserPane(props: Props) {
 		if(ownGeneration !== generation){ return; }
 
 		const appWindow = getCurrentWindow();
-		const next = new Webview(appWindow, "browser-pane", {
+		const next = new Webview(appWindow, webviewLabel, {
 			url,
 			x: 1,
 			y: 1,
@@ -112,7 +113,7 @@ export default function BrowserPane(props: Props) {
 		setBusy(true);
 		try{
 			if(browser){
-				await browserNavigate(url);
+				await browserNavigate(url, webviewLabel);
 				setCurrentUrl(url);
 				setUrlDraft(url);
 				props.onUrlChange?.(url);
@@ -142,11 +143,11 @@ export default function BrowserPane(props: Props) {
 		setBusy(true);
 		try{
 			if(action === "back"){
-				await browserBack();
+				await browserBack(webviewLabel);
 			}else if(action === "forward"){
-				await browserForward();
+				await browserForward(webviewLabel);
 			}else{
-				await browserReload();
+				await browserReload(webviewLabel);
 			}
 			window.setTimeout(() => { void syncCurrentUrl(); }, 250);
 		}catch(error){
