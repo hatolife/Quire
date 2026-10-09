@@ -2904,6 +2904,12 @@ function App() {
 			run: () => createHistorySnapshot(),
 		},
 		{
+			id: "history.toggle",
+			title: historyOpen() ? "履歴を閉じる" : "履歴を開く",
+			keywords: "history drawer toggle",
+			run: () => toggleHistory(),
+		},
+		{
 			id: "history.show",
 			title: "履歴を表示",
 			keywords: "history restore",
@@ -3017,23 +3023,23 @@ function App() {
 	return (
 		<div class="app">
 			<header class="toolbar">
-				<button onClick={() => void chooseWorkspace()}>Workspaceを開く</button>
-				<button title="設定" onClick={() => setSettingsOpen(true)}>設定</button>
+				<button onClick={() => void invokeCommand("workspace.open")}>Workspaceを開く</button>
+				<button title="設定" onClick={() => void invokeCommand("settings.show")}>設定</button>
 				<Show when={workspace()}>
-					<button title="前に開いたDocument (Alt+Left)" disabled={documentNavigationIndex() <= 0} onClick={() => void navigateDocumentHistory(-1)}>←</button>
-					<button title="次に開いたDocument (Alt+Right)" disabled={documentNavigationIndex() < 0 || documentNavigationIndex() >= documentNavigation().length - 1} onClick={() => void navigateDocumentHistory(1)}>→</button>
+					<button title="前に開いたDocument (Alt+Left)" disabled={documentNavigationIndex() <= 0} onClick={() => void invokeCommand("document.navigation.back")}>←</button>
+					<button title="次に開いたDocument (Alt+Right)" disabled={documentNavigationIndex() < 0 || documentNavigationIndex() >= documentNavigation().length - 1} onClick={() => void invokeCommand("document.navigation.forward")}>→</button>
 				</Show>
 				<Show when={workspace()}>{value => <span class="workspace-path">{value().root}</span>}</Show>
 				<span class="toolbar-spacer" />
 				<Show when={workspace()}>
-					<button disabled={historyBusy()} onClick={() => void createHistorySnapshot()}>Snapshot</button>
-					<button onClick={toggleHistory}>履歴</button>
+					<button disabled={historyBusy()} onClick={() => void invokeCommand("workspace.snapshot")}>Snapshot</button>
+					<button onClick={() => void invokeCommand("history.toggle")}>履歴</button>
 				</Show>
 				<Show when={workspace()}>
-					<button title="Ctrl+Shift+E" classList={{ active: focusMode() }} onClick={toggleFocusMode}>Focus</button>
+					<button title="Ctrl+Shift+E" classList={{ active: focusMode() }} onClick={() => void invokeCommand("layout.focus.toggle")}>Focus</button>
 				</Show>
 				<Show when={document()}>
-					<button disabled={!dirty() || saving()} onClick={() => void saveDocument()}>
+					<button disabled={!dirty() || saving()} onClick={() => void invokeCommand("document.save")}>
 						{saving() ? "保存中..." : dirty() ? "保存 *" : "保存"}
 					</button>
 				</Show>
@@ -3064,7 +3070,7 @@ function App() {
 					<main class="welcome">
 						<h1>Quire</h1>
 						<p>通常のフォルダを、そのままWorkspaceとして扱います。</p>
-						<button class="primary" onClick={() => void chooseWorkspace()}>Workspaceを開く</button>
+						<button class="primary" onClick={() => void invokeCommand("workspace.open")}>Workspaceを開く</button>
 						<Show when={recentWorkspaces().length > 0}>
 							<section class="recent-workspaces">
 								<h2>Recent Workspaces</h2>
@@ -3093,10 +3099,10 @@ function App() {
 							<button class="explorer-mode" classList={{ active: explorerMode() === "outline" }} onClick={() => setExplorerMode("outline")}>Outline</button>
 							<span class="toolbar-spacer" />
 							<button class="pane-action" title="Explorerを別ウィンドウに分離" onClick={() => detachPane("explorer")}>↗</button>
-							<button class="pane-action" title="新規Markdown" onClick={() => void createDocument()}>＋</button>
-							<button class="pane-action" title="新規folder" onClick={() => void createFolder()}>F＋</button>
-							<button class="pane-action" title="Templateから新規" onClick={() => void openTemplatePicker()}>T＋</button>
-							<button class="pane-action" title="再読込" onClick={() => void refreshExplorer()}>↻</button>
+							<button class="pane-action" title="新規Markdown" onClick={() => void invokeCommand("document.create")}>＋</button>
+							<button class="pane-action" title="新規folder" onClick={() => void invokeCommand("workspace.folder.create")}>F＋</button>
+							<button class="pane-action" title="Templateから新規" onClick={() => void invokeCommand("document.create.template")}>T＋</button>
+							<button class="pane-action" title="再読込" onClick={() => void invokeCommand("workspace.explorer.refresh")}>↻</button>
 						</div>
 						<div class="explorer-search-row">
 							<input
@@ -3210,9 +3216,9 @@ function App() {
 							<span class="toolbar-spacer" />
 							<Show when={document()}>
 								<button class="pane-action" title="Editorを別ウィンドウに分離" onClick={() => void detachPane("editor")}>↗</button>
-								<button class="pane-action" title="画像を追加" onClick={() => void addImageAsset()}>画像</button>
-								<button class="pane-action" title="移動・名前変更" disabled={dirty()} onClick={() => void moveCurrentDocument()}>移動</button>
-								<button class="pane-action danger" title="削除" disabled={dirty()} onClick={() => void deleteCurrentDocument()}>削除</button>
+								<button class="pane-action" title="画像を追加" onClick={() => void invokeCommand("document.image.add")}>画像</button>
+								<button class="pane-action" title="移動・名前変更" disabled={dirty()} onClick={() => void invokeCommand("document.move")}>移動</button>
+								<button class="pane-action danger" title="削除" disabled={dirty()} onClick={() => void invokeCommand("document.delete")}>削除</button>
 							</Show>
 						</div>
 						<Show when={openDocuments().length > 0}>
@@ -3270,21 +3276,21 @@ function App() {
 							<button
 								class="pane-tab"
 								classList={{ active: rightPaneMode() === "preview" }}
-								onClick={() => setRightPaneMode("preview")}
+								onClick={() => void invokeCommand("pane.preview")}
 							>
 								Preview
 							</button>
 							<button
 								class="pane-tab"
 								classList={{ active: rightPaneMode() === "browser" }}
-								onClick={() => setRightPaneMode("browser")}
+								onClick={() => void invokeCommand("pane.browser")}
 							>
 								Browser
 							</button>
 							<button
 								class="pane-tab"
 								classList={{ active: rightPaneMode() === "graph" }}
-								onClick={() => setRightPaneMode("graph")}
+								onClick={() => void invokeCommand("pane.graph")}
 							>
 								Graph
 							</button>
