@@ -1676,6 +1676,25 @@ function App() {
 			}
 		};
 		window.addEventListener("keydown", commandKeyHandler);
+		const listenFloating = <T,>(name: string, callback: (payload: T) => void) => {
+			void listen<T>(name, event => callback(event.payload), { target: { kind: "Any" } })
+				.then(unlisten => floatingUnlisteners.push(unlisten))
+				.catch(error => updateStatus("Pane listener error: " + String(error), "error", "layout"));
+		};
+		listenFloating<{ kind: FloatingPaneKind; label: string }>("quire:pane-ready", payload => {
+			if(floatingPanels()[payload.kind] === payload.label){
+				void emitTo(payload.label, "quire:pane-state", floatingPaneState());
+			}
+		});
+		listenFloating<{ kind: FloatingPaneKind; label: string }>("quire:pane-dock", payload => {
+			restoreFloatingPane(payload.kind, payload.label);
+		});
+		listenFloating<string>("quire:pane-open-document", path => {
+			if(workspace()){ void openDocument(path); }
+		});
+		listenFloating<string>("quire:pane-browser-url", url => {
+			if(url.startsWith("https://") || url.startsWith("http://")){ setBrowserTargetUrl(url); }
+		});
 
 		void getCurrentWindow().onDragDropEvent(event => {
 			const payload = event.payload;
@@ -1716,6 +1735,8 @@ function App() {
 
 	onCleanup(() => {
 		closeUnlisten?.();
+		for(const unlisten of floatingUnlisteners){ unlisten(); }
+		for(const floating of floatingHandles.values()){ void floating.close(); }
 		dragDropUnlisten?.();
 		if(commandKeyHandler){ window.removeEventListener("keydown", commandKeyHandler); }
 		++watchGeneration;
@@ -2873,6 +2894,12 @@ function App() {
 			keywords: "layout preview browser graph pane toggle",
 			run: () => setRightPaneVisible(value => !value),
 		},
+		...(["explorer", "preview", "browser", "graph"] as FloatingPaneKind[]).map(kind => ({
+			id: "pane." + kind + ".detach",
+			title: kind + "を別ウィンドウで開く",
+			keywords: "float undock window detach",
+			run: () => detachPane(kind),
+		} as AppCommand)),
 		{
 			id: "pane.preview",
 			title: "Preview paneを表示",
