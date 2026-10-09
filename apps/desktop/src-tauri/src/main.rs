@@ -282,8 +282,11 @@ fn asset_import(
 	})
 }
 
-fn browser_webview(app: &tauri::AppHandle) -> Result<tauri::Webview, String> {
-	app.get_webview("browser-pane")
+fn browser_webview(app: &tauri::AppHandle, label: &str) -> Result<tauri::Webview, String> {
+	if label != "browser-pane" && !label.starts_with("browser-pane-floating-") {
+		return Err("Invalid Browser pane label.".to_string());
+	}
+	app.get_webview(label)
 		.ok_or_else(|| "Browser pane is not created.".to_string())
 }
 
@@ -296,37 +299,37 @@ fn validated_browser_url(value: &str) -> Result<tauri::Url, String> {
 }
 
 #[tauri::command]
-fn browser_navigate(url: String, app: tauri::AppHandle) -> Result<(), String> {
+fn browser_navigate(url: String, webview_label: String, app: tauri::AppHandle) -> Result<(), String> {
 	let url = validated_browser_url(&url)?;
-	browser_webview(&app)?
+	browser_webview(&app, &webview_label)?
 		.navigate(url)
 		.map_err(|error| format!("Browser navigation failed: {error}"))
 }
 
 #[tauri::command]
-fn browser_reload(app: tauri::AppHandle) -> Result<(), String> {
-	browser_webview(&app)?
+fn browser_reload(webview_label: String, app: tauri::AppHandle) -> Result<(), String> {
+	browser_webview(&app, &webview_label)?
 		.reload()
 		.map_err(|error| format!("Browser reload failed: {error}"))
 }
 
 #[tauri::command]
-fn browser_back(app: tauri::AppHandle) -> Result<(), String> {
-	browser_webview(&app)?
+fn browser_back(webview_label: String, app: tauri::AppHandle) -> Result<(), String> {
+	browser_webview(&app, &webview_label)?
 		.eval("history.back()")
 		.map_err(|error| format!("Browser back failed: {error}"))
 }
 
 #[tauri::command]
-fn browser_forward(app: tauri::AppHandle) -> Result<(), String> {
-	browser_webview(&app)?
+fn browser_forward(webview_label: String, app: tauri::AppHandle) -> Result<(), String> {
+	browser_webview(&app, &webview_label)?
 		.eval("history.forward()")
 		.map_err(|error| format!("Browser forward failed: {error}"))
 }
 
 #[tauri::command]
-fn browser_current_url(app: tauri::AppHandle) -> Result<String, String> {
-	browser_webview(&app)?
+fn browser_current_url(webview_label: String, app: tauri::AppHandle) -> Result<String, String> {
+	browser_webview(&app, &webview_label)?
 		.url()
 		.map(|url| url.to_string())
 		.map_err(|error| format!("Browser URL read failed: {error}"))
