@@ -63,6 +63,10 @@ jobs:
         working-directory: apps/desktop
         run: npm ci --no-audit --no-fund --prefer-offline
 
+      - name: Verify dock layout model
+        working-directory: apps/desktop
+        run: npm run test:dock
+
       - name: Build Quire desktop executable
         working-directory: apps/desktop
         run: npm run tauri build -- --no-bundle
