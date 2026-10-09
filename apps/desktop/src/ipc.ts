@@ -92,6 +92,11 @@ export type LayoutPreset = {
 	rightPaneMode: string;
 };
 
+export type MacroDefinition = {
+	name: string;
+	steps: string[];
+};
+
 export type DesktopSettings = {
 	explorerWidth: number;
 	editorRatio: number;
@@ -108,6 +113,8 @@ export type DesktopSettings = {
 	historyRetentionSnapshots: number;
 	templateDirectory: string;
 	layoutPresets: LayoutPreset[];
+	macros: MacroDefinition[];
+	sidebarCommands: string[];
 	dailyNotesDirectory: string;
 	dailyNoteTemplate: string;
 	lastRightPane: string;
