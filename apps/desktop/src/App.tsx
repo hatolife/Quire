@@ -1704,11 +1704,26 @@ function App() {
 			}
 		});
 		listenFloating<{ kind: FloatingPaneKind; label: string }>("quire:pane-dock", payload => {
-			restoreFloatingPane(payload.kind, payload.label);
+			const floating = floatingHandles.get(payload.kind);
+			if(!floating || floatingPanels()[payload.kind] !== payload.label){ return; }
+			void (async () => {
+				if(payload.kind === "editor" && dirty()){
+					await saveDocument();
+					if(dirty()){ updateStatus("Editorを戻す前に未保存内容を解決してください。", "warn", "layout"); return; }
+				}
+				await floating.close();
+			})().catch(error => updateStatus("Dock error: " + String(error), "error", "layout"));
 		});
 		listenFloating<string>("quire:pane-open-document", path => {
 			if(workspace()){ void openDocument(path); }
 		});
+		listenFloating<{ path: string; content: string }>("quire:pane-editor-change", payload => {
+			if(document()?.relativePath === payload.path){ setDraft(payload.content); }
+		});
+		listenFloating<string>("quire:pane-editor-save", path => {
+			if(document()?.relativePath === path){ void saveDocument(); }
+		});
+		listenFloating<number>("quire:pane-editor-scroll", line => handleEditorViewportLine(line));
 		listenFloating<string>("quire:pane-browser-url", url => {
 			if(url.startsWith("https://") || url.startsWith("http://")){ setBrowserTargetUrl(url); }
 		});
