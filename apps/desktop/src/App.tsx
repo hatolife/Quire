@@ -1631,76 +1631,25 @@ function App() {
 
 		commandKeyHandler = (event: KeyboardEvent) => {
 			const key = event.key.toLowerCase();
+			let commandId: string | undefined;
 			if(event.altKey && !event.ctrlKey && !event.shiftKey){
-				if(key === "arrowleft"){
-					event.preventDefault();
-					void navigateDocumentHistory(-1);
-					return;
-				}
-				if(key === "arrowright"){
-					event.preventDefault();
-					void navigateDocumentHistory(1);
-					return;
-				}
+				if(key === "arrowleft"){ commandId = "document.navigation.back"; }
+				if(key === "arrowright"){ commandId = "document.navigation.forward"; }
+			}else if(event.ctrlKey && !event.altKey){
+				if(key === "tab"){ commandId = event.shiftKey ? "tabs.previous" : "tabs.next"; }
+				else if(event.shiftKey && key === "p"){ commandId = "commands.show"; }
+				else if(!event.shiftKey && key === "p"){ commandId = "workspace.quickOpen"; }
+				else if(event.shiftKey && key === "e"){ commandId = "layout.focus.toggle"; }
+				else if(event.shiftKey && key === "f"){ commandId = "workspace.search.focus"; }
+				else if(!event.shiftKey && key === "o"){ commandId = "workspace.open"; }
+				else if(event.shiftKey && key === "d"){ commandId = "document.daily.open"; }
+				else if(event.shiftKey && key === "n"){ commandId = "document.create.template"; }
+				else if(!event.shiftKey && key === "n"){ commandId = "document.create"; }
+				else if(!event.shiftKey && key === ","){ commandId = "settings.show"; }
 			}
-			if(!event.ctrlKey || event.altKey){ return; }
-			if(key === "tab"){
-				const paths = openDocuments();
-				const currentPath = document()?.relativePath;
-				if(paths.length <= 1 || !currentPath){ return; }
-				event.preventDefault();
-				const currentIndex = Math.max(0, paths.indexOf(currentPath));
-				const delta = event.shiftKey ? -1 : 1;
-				const nextIndex = (currentIndex + delta + paths.length) % paths.length;
-				void openDocument(paths[nextIndex]);
-				return;
-			}
-			if(event.shiftKey && key === "p"){
-				event.preventDefault();
-				setQuickOpenVisible(false);
-				setCommandPaletteOpen(true);
-				return;
-			}
-			if(!event.shiftKey && key === "p"){
-				event.preventDefault();
-				void openQuickOpen();
-				return;
-			}
-			if(event.shiftKey && key === "e"){
-				event.preventDefault();
-				toggleFocusMode();
-				return;
-			}
-			if(event.shiftKey && key === "f"){
-				event.preventDefault();
-				explorerSearchInput?.focus();
-				explorerSearchInput?.select();
-				return;
-			}
-			if(!event.shiftKey && key === "o"){
-				event.preventDefault();
-				void chooseWorkspace();
-				return;
-			}
-			if(event.shiftKey && key === "d"){
-				event.preventDefault();
-				if(workspace()){ void openDailyNote(); }
-				return;
-			}
-			if(event.shiftKey && key === "n"){
-				event.preventDefault();
-				if(workspace()){ void openTemplatePicker(); }
-				return;
-			}
-			if(!event.shiftKey && key === "n"){
-				event.preventDefault();
-				if(workspace()){ void createDocument(); }
-				return;
-			}
-			if(!event.shiftKey && event.key === ","){
-				event.preventDefault();
-				setSettingsOpen(true);
-			}
+			if(!commandId){ return; }
+			event.preventDefault();
+			void invokeCommand(commandId);
 		};
 		window.addEventListener("keydown", commandKeyHandler);
 		const listenFloating = <T,>(name: string, callback: (payload: T) => void) => {
@@ -2801,6 +2750,13 @@ function App() {
 
 	const commands = (): AppCommand[] => [
 		{
+			id: "commands.show",
+			title: "コマンドパレットを開く",
+			keywords: "command palette action list",
+			shortcut: "Ctrl+Shift+P",
+			run: () => { setQuickOpenVisible(false); setCommandPaletteOpen(true); },
+		},
+		{
 			id: "workspace.open",
 			title: "Workspaceを開く",
 			keywords: "folder vault open",
@@ -2814,8 +2770,8 @@ function App() {
 			enabled: workspace() !== null,
 			run: () => createFolder(),
 		},
-		...recentWorkspaces().map((path, index) => ({
-			id: "workspace.recent." + index,
+		...recentWorkspaces().map(path => ({
+			id: "workspace.recent." + encodeURIComponent(path),
 			title: "最近のWorkspace: " + path,
 			keywords: "workspace recent switch folder",
 			run: () => chooseWorkspace(path),
