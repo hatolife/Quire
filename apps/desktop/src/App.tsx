@@ -827,6 +827,7 @@ function App() {
 	let autoSnapshotTimer: number | undefined;
 	let documentAutoSaveTimer: number | undefined;
 	let recoveryTimer: number | undefined;
+	let dockMountFrame: number | undefined;
 	let watchGeneration = 0;
 	let searchReindexPending = false;
 	let pendingWatchChanges: Array<{ change: "create" | "modify" | "remove" | "other"; paths: string[] }> = [];
@@ -1788,6 +1789,7 @@ function App() {
 		if(autoSnapshotTimer !== undefined){ window.clearTimeout(autoSnapshotTimer); }
 		if(documentAutoSaveTimer !== undefined){ window.clearTimeout(documentAutoSaveTimer); }
 		if(recoveryTimer !== undefined){ window.clearTimeout(recoveryTimer); }
+		if(dockMountFrame !== undefined){ cancelAnimationFrame(dockMountFrame); }
 		void workspaceWatchStop();
 	});
 
@@ -1852,6 +1854,23 @@ function App() {
 			.finally(() => requestAnimationFrame(() => { suppressEditorViewport = false; }));
 	};
 
+	createEffect(() => {
+		const root = dockTree();
+		const activeWorkspace = workspace();
+		const floating = floatingPanels();
+		const visible = new Set<DockPanel>(["editor"]);
+		if(explorerVisible() && !floating.explorer){ visible.add("explorer"); }
+		if(rightPaneVisible()){ visible.add("right"); }
+		if(dockMountFrame !== undefined){ cancelAnimationFrame(dockMountFrame); }
+		if(!activeWorkspace){ return; }
+		dockMountFrame = requestAnimationFrame(() => {
+			dockMountFrame = undefined;
+			if(workspaceElement?.isConnected){
+				mountDockTree(workspaceElement, root, visible, (path, ratio) => setDockTree(current => updateDockSplit(current, path, ratio)));
+			}
+		});
+	});
+
 	const visibleDockPanels = () => dockOrder().filter(panel => panel !== "explorer" || (explorerVisible() && !floatingPanels().explorer)).filter(panel => panel !== "right" || rightPaneVisible());
 	const dockIndex = (panel: DockPanel) => visibleDockPanels().indexOf(panel);
 	const dockTracks = () => {
@@ -1915,14 +1934,11 @@ function App() {
 			cleanup();
 			if(!destination || destination === source || !dockOrder().includes(destination)){ return; }
 			const bounds = target!.getBoundingClientRect();
-			const horizontal = (next.clientX - bounds.left) / Math.max(1, bounds.width);
-			const vertical = (next.clientY - bounds.top) / Math.max(1, bounds.height);
-			const column = vertical < 0.25 || vertical > 0.75;
-			const before = column ? vertical < 0.5 : horizontal < 0.5;
-			const order = dockOrder().filter(panel => panel !== source);
-			order.splice(order.indexOf(destination) + (before ? 0 : 1), 0, source);
-			setDockDirection(column ? "column" : "row");
-			setDockOrder(order);
+			const x = (next.clientX - bounds.left) / Math.max(1, bounds.width);
+			const y = (next.clientY - bounds.top) / Math.max(1, bounds.height);
+			const distances: Array<[DockEdge, number]> = [["left", x], ["right", 1 - x], ["top", y], ["bottom", 1 - y]];
+			distances.sort((left, right) => left[1] - right[1]);
+			setDockTree(root => moveDockPanel(root, source, destination, distances[0][0]));
 		};
 		handle.addEventListener("pointermove", move);
 		handle.addEventListener("pointerup", finish);
