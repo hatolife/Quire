@@ -6,6 +6,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import type { FloatingPaneKind, FloatingPaneState } from "./layout/DetachedPane";
+import { defaultDockTree, moveDockPanel, normalizeDockTree, updateDockSplit, type DockNode, type DockEdge } from "./layout/dock-tree";
+import { mountDockTree } from "./layout/mount-dock-tree";
 import BrowserPane from "./browser/BrowserPane";
 import GraphPane from "./graph/GraphPane";
 import CommandPalette, { type AppCommand } from "./commands/CommandPalette";
@@ -882,6 +884,7 @@ function App() {
 	const [floatingPanels, setFloatingPanels] = createSignal<Partial<Record<FloatingPaneKind, string>>>({});
 	const [dockOrder, setDockOrder] = createSignal<DockPanel[]>(["explorer", "editor", "right"]);
 	const [dockDirection, setDockDirection] = createSignal<"row" | "column">("row");
+	const [dockTree, setDockTree] = createSignal<DockNode>(defaultDockTree());
 	const [draggingDock, setDraggingDock] = createSignal<DockPanel | null>(null);
 	const [dailyNotesDirectory, setDailyNotesDirectory] = createSignal("Daily");
 	const [dailyNoteTemplate, setDailyNoteTemplate] = createSignal("Templates/Daily.md");
@@ -1237,6 +1240,7 @@ function App() {
 		rightPaneVisible: rightPaneVisible(),
 		explorerMode: explorerMode(),
 		rightPaneMode: rightPaneMode(),
+		dockTree: dockTree(),
 	});
 
 	const saveLayoutPreset = () => {
@@ -1264,6 +1268,7 @@ function App() {
 		setRightPaneVisible(preset.rightPaneVisible);
 		setExplorerMode(preset.explorerMode === "tags" ? "tags" : preset.explorerMode === "outline" ? "outline" : "files");
 		setRightPaneMode(preset.rightPaneMode === "browser" ? "browser" : preset.rightPaneMode === "graph" ? "graph" : "preview");
+		if(preset.dockTree){ setDockTree(normalizeDockTree(preset.dockTree)); }
 		updateStatus("layoutを復元しました: " + preset.name, "info", "layout");
 	};
 
@@ -1273,6 +1278,7 @@ function App() {
 	};
 
 	const resetPaneLayout = () => {
+		setDockTree(defaultDockTree());
 		setDockOrder(["explorer", "editor", "right"]);
 		setDockDirection("row");
 		setExplorerWidth(260);
@@ -1414,6 +1420,7 @@ function App() {
 		sidebarCommands();
 		dockOrder();
 		dockDirection();
+		dockTree();
 		dailyNotesDirectory();
 		dailyNoteTemplate();
 		rightPaneMode();
@@ -1513,6 +1520,7 @@ function App() {
 		sidebarCommands: sidebarCommands(),
 		dockOrder: dockOrder(),
 		dockDirection: dockDirection(),
+		dockTree: dockTree(),
 		dailyNotesDirectory: dailyNotesDirectory(),
 		dailyNoteTemplate: dailyNoteTemplate(),
 		lastRightPane: rightPaneMode(),
@@ -1558,6 +1566,7 @@ function App() {
 						? saved as DockPanel[] : ["explorer", "editor", "right"];
 				});
 				setDockDirection(settings.dockDirection === "column" ? "column" : "row");
+				setDockTree(normalizeDockTree(settings.dockTree));
 				setMacros(settings.macros ?? []);
 				setSidebarCommands(settings.sidebarCommands ?? ["workspace.quickOpen", "document.daily.open", "pane.preview", "pane.browser", "pane.graph", "history.show"]);
 				setDailyNotesDirectory(settings.dailyNotesDirectory?.trim() || "Daily");
