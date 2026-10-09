@@ -65,3 +65,13 @@ test("orientation applies recursively without changing the pane set", () => {
 	assert.equal(oriented.second.axis, "column");
 	assert.deepEqual(ids(oriented).sort(), ["editor", "explorer", "right"]);
 });
+
+test("a divider retains its original path when hidden panels collapse the root", () => {
+	const original = tree.defaultDockTree();
+	const visible = tree.visibleDockTree(original, new Set(["editor", "right"]));
+	assert.equal(visible.type, "split");
+	assert.equal(visible.sourcePath, "1");
+	const resized = tree.updateDockSplit(original, visible.sourcePath, 0.3);
+	assert.equal(resized.ratio, original.ratio);
+	assert.equal(resized.second.ratio, 0.3);
+});
