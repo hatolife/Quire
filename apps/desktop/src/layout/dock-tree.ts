@@ -83,3 +83,8 @@ export function updateDockSplit(tree: DockNode, path: string, ratio: number): Do
 	if(head === "1"){ return { ...tree, second: updateDockSplit(tree.second, tail, ratio) }; }
 	return tree;
 }
+
+export function setDockAxis(tree: DockNode, axis: DockAxis): DockNode {
+	if(tree.type === "pane"){ return tree; }
+	return { ...tree, axis, first: setDockAxis(tree.first, axis), second: setDockAxis(tree.second, axis) };
+}
