@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::io::{BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{atomic::{AtomicU64, Ordering}, mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
@@ -14,9 +14,11 @@ type PendingResponse = mpsc::Sender<Result<Value, String>>;
 #[derive(Default)]
 pub struct EditorState {
 	process: Mutex<Option<EditorProcess>>,
+	latest_session: AtomicU64,
 }
 
 struct EditorProcess {
+	session_id: u64,
 	child: Child,
 	stdin: ChildStdin,
 	next_request_id: i64,
@@ -380,10 +382,15 @@ fn stop_process(process: &mut EditorProcess) {
 pub fn start_document(
 	path: PathBuf,
 	relative_path: String,
+	session_id: u64,
 	stream: Channel<StreamMessage>,
 	state: &EditorState,
 ) -> Result<(), String> {
 	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
+	if session_id <= state.latest_session.load(Ordering::SeqCst) {
+		return Err("Stale editor start request ignored.".to_string());
+	}
+	state.latest_session.store(session_id, Ordering::SeqCst);
 	if let Some(mut process) = slot.take() {
 		stop_process(&mut process);
 	}
@@ -407,6 +414,7 @@ pub fn start_document(
 	thread::spawn(move || read_neovim(stdout, stream, reader_pending));
 
 	let mut process = EditorProcess {
+		session_id,
 		child,
 		stdin,
 		next_request_id: 1,
@@ -617,6 +625,17 @@ pub fn insert_text(text: String, state: &EditorState) -> Result<(), String> {
 			Value::Array(vec![Value::from(final_row), Value::from(final_col)]),
 		],
 	)?;
+	Ok(())
+}
+
+// UI component cleanup must not terminate a newer editor session.
+pub fn stop_session(session_id: u64, state: &EditorState) -> Result<(), String> {
+	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
+	if slot.as_ref().is_some_and(|process| process.session_id == session_id) {
+		if let Some(mut process) = slot.take() {
+			stop_process(&mut process);
+		}
+	}
 	Ok(())
 }
 

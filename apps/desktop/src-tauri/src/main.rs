@@ -365,6 +365,7 @@ fn asset_mime(source: &str) -> Option<&'static str> {
 #[tauri::command]
 fn editor_start_document(
 	relative_path: String,
+	session_id: u64,
 	stream: Channel<editor::StreamMessage>,
 	state: tauri::State<'_, AppState>,
 	editor_state: tauri::State<'_, editor::EditorState>,
@@ -372,7 +373,7 @@ fn editor_start_document(
 	let path = with_workspace(&state, |workspace| {
 		workspace.document_path(&relative_path).map_err(|error| error.to_string())
 	})?;
-	editor::start_document(path, relative_path, stream, &editor_state)
+	editor::start_document(path, relative_path, session_id, stream, &editor_state)
 }
 
 #[tauri::command]
@@ -444,6 +445,11 @@ fn editor_insert_text(text: String, editor_state: tauri::State<'_, editor::Edito
 #[tauri::command]
 fn editor_replace_content(content: String, editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
 	editor::replace_content(content, &editor_state)
+}
+
+#[tauri::command]
+fn editor_stop_session(session_id: u64, editor_state: tauri::State<'_, editor::EditorState>) -> Result<(), String> {
+	editor::stop_session(session_id, &editor_state)
 }
 
 #[tauri::command]
@@ -682,6 +688,7 @@ fn main() {
 			editor_toggle_task,
 			editor_insert_text,
 			editor_replace_content,
+			editor_stop_session,
 			editor_stop,
 			recovery_load,
 			recovery_save,

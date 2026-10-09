@@ -88,6 +88,9 @@ function rgbToCss(value: number, fallback: string): string {
 	return "#" + value.toString(16).padStart(6, "0").slice(-6);
 }
 
+// Monotonically increasing across editor remounts within this UI process.
+let editorSessionSequence = 0;
+
 export default function NeovimEditor(props: Props) {
 	let host!: HTMLDivElement;
 	let canvas!: HTMLCanvasElement;
@@ -112,6 +115,7 @@ export default function NeovimEditor(props: Props) {
 	let viewportRequestPending = false;
 	let active = true;
 	let sessionGeneration = 0;
+	let ownedSessionId = 0;
 	const highlights = new Map<number, Highlight>();
 	const [mode, setMode] = createSignal("unknown");
 	const [preeditText, setPreeditText] = createSignal("");
@@ -503,7 +507,11 @@ export default function NeovimEditor(props: Props) {
 	};
 
 	const startEditorSession = async () => {
+		if(restarting()){ return; }
 		const generation = ++sessionGeneration;
+		const sessionId = Date.now() * 1000 + (++editorSessionSequence % 1000);
+		ownedSessionId = sessionId;
+		started = false;
 		setRestarting(true);
 		setClosedMessage(null);
 		bufferLines = [];
@@ -530,17 +538,21 @@ export default function NeovimEditor(props: Props) {
 		try{
 			await invoke("editor_start_document", {
 				relativePath: props.relativePath,
+				sessionId,
 				stream,
 			});
+			if(!active || generation !== sessionGeneration){ return; }
 			started = true;
 			await requestResize();
 			if(props.initialLine && props.initialLine > 0){
 				await invoke("editor_goto_line", { line: props.initialLine });
 			}
+			if(!active || generation !== sessionGeneration){ return; }
 			requestViewportLine();
 			props.onStatus("Neovim connected");
 			input.focus();
 		}catch(error){
+			if(!active || generation !== sessionGeneration){ return; }
 			started = false;
 			const detail = String(error);
 			setClosedMessage(detail);
@@ -566,7 +578,10 @@ export default function NeovimEditor(props: Props) {
 		active = false;
 		++sessionGeneration;
 		resizeObserver?.disconnect();
-		void invoke("editor_stop");
+		// An old component must never stop an editor started by a newer component.
+		if(ownedSessionId !== 0){
+			void invoke("editor_stop_session", { sessionId: ownedSessionId });
+		}
 	});
 
 	return (
@@ -585,7 +600,7 @@ export default function NeovimEditor(props: Props) {
 				<div class="neovim-editor-closed">
 					<strong>Neovimが終了しました</strong>
 					<span>{closedMessage()}</span>
-					<span>未保存のNeovim bufferは復元できません。disk上のDocumentを開き直します。</span>
+					<span>再起動するとdisk上の内容を開き直します。未保存の変更がある場合はRecoveryをご確認ください。</span>
 					<button disabled={restarting()} onClick={() => void startEditorSession()}>
 						{restarting() ? "再起動中..." : "Neovimを再起動"}
 					</button>

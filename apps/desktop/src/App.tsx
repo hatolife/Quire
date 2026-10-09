@@ -880,8 +880,18 @@ function App() {
 	const [recoveryDraft, setRecoveryDraft] = createSignal<RecoveryDraft | null>(null);
 	const [recoveryTrackingReady, setRecoveryTrackingReady] = createSignal(false);
 	const [draggingImageFiles, setDraggingImageFiles] = createSignal(false);
-	const preview = createMemo(() => renderPreview(draft(), document()?.relativePath));
-	const documentHeadings = createMemo(() => extractDocumentHeadings(draft()));
+	const preview = createMemo(() => {
+		const path = document()?.relativePath;
+		if(!path){ return ""; }
+		if(!/\.md(?:own)?$/i.test(path)){
+			return '<div class="empty-pane">このファイルはNeovimで編集できます。Markdown PreviewはMarkdown文書でのみ使用できます。</div>';
+		}
+		return renderPreview(draft(), path);
+	});
+	const documentHeadings = createMemo(() => {
+		const path = document()?.relativePath;
+		return path && /\.md(?:own)?$/i.test(path) ? extractDocumentHeadings(draft()) : [];
+	});
 	const dirty = createMemo(() => document() !== null && draft() !== contentForEditor(document()!.content));
 
 	const decodeAssetSource = (source: string) => {
@@ -2361,6 +2371,10 @@ function App() {
 	};
 
 	const refreshBacklinks = async (relativePath: string) => {
+		if(!/\.md(?:own)?$/i.test(relativePath)){
+			setBacklinks([]);
+			return;
+		}
 		try{
 			setBacklinks(await documentBacklinks(relativePath));
 		}catch(error){
@@ -2927,7 +2941,7 @@ function App() {
 						</Show>
 						<For
 							each={document() ? [{ relativePath: document()!.relativePath, session: editorSession() }] : []}
-							fallback={<div class="empty-pane">左からMarkdownを選択してください。</div>}
+							fallback={<div class="empty-pane">左からファイルを選択してください。</div>}
 						>
 							{item => (
 								<NeovimEditor
@@ -3375,16 +3389,14 @@ function TreeEntry(props: {
 			setExpanded(!expanded());
 			return;
 		}
-		if(props.entry.kind === "markdown"){
-			await props.openDocument(props.entry.relativePath);
-		}
+		await props.openDocument(props.entry.relativePath);
 	};
 
 	return (
 		<div>
 			<button
 				class={"tree-entry " + props.entry.kind}
-				classList={{ active: props.entry.kind === "markdown" && props.entry.relativePath === props.currentPath }}
+				classList={{ active: props.entry.kind !== "directory" && props.entry.relativePath === props.currentPath }}
 				onClick={() => void activate()}
 				title={props.entry.relativePath}
 			>

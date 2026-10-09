@@ -249,6 +249,12 @@ impl Workspace {
 	pub fn read_document(&self, relative_path: &str) -> Result<Document, WorkspaceError> {
 		let path = self.document_path(relative_path)?;
 		let bytes = fs::read(&path)?;
+		if bytes.contains(&0) {
+			return Err(WorkspaceError::Io(std::io::Error::new(
+				std::io::ErrorKind::InvalidData,
+				format!("Binary file cannot be edited as text: {relative_path}"),
+			)));
+		}
 		let content = String::from_utf8(bytes.clone()).map_err(|error| {
 			WorkspaceError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
 		})?;
@@ -557,6 +563,32 @@ mod tests {
 			workspace.document_exists("../outside.md"),
 			Err(WorkspaceError::InvalidRelativePath(_))
 		));
+	}
+
+	#[test]
+	fn non_markdown_utf8_document_can_be_read_and_saved() {
+		let temp = tempfile::tempdir().unwrap();
+		let path = temp.path().join("sample.cpp");
+		fs::write(&path, "int main() { return 0; }\n").unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		let original = workspace.read_document("sample.cpp").unwrap();
+		assert_eq!(original.content, "int main() { return 0; }\n");
+		let saved = workspace.save_document("sample.cpp", "int main() { return 1; }\n", &original.revision).unwrap();
+		assert_eq!(saved.content, "int main() { return 1; }\n");
+		assert_eq!(fs::read_to_string(path).unwrap(), saved.content);
+	}
+
+	#[test]
+	fn binary_document_is_not_opened_as_text() {
+		let temp = tempfile::tempdir().unwrap();
+		let path = temp.path().join("binary.bin");
+		fs::write(&path, [0_u8, 1, 2, 3]).unwrap();
+		let workspace = Workspace::open(temp.path()).unwrap();
+		assert!(matches!(
+			workspace.read_document("binary.bin"),
+			Err(WorkspaceError::Io(error)) if error.kind() == std::io::ErrorKind::InvalidData
+		));
+		assert_eq!(fs::read(path).unwrap(), vec![0, 1, 2, 3]);
 	}
 
 	#[test]
