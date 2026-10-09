@@ -1,4 +1,4 @@
-import { filterDockTree, type DockNode, type DockPanelId } from "./dock-tree";
+import { visibleDockTree, type DockNode, type DockPanelId, type VisibleDockNode } from "./dock-tree";
 
 export function mountDockTree(
 	host: HTMLElement,
@@ -12,7 +12,7 @@ export function mountDockTree(
 		if(!element){ return; }
 		panels.set(id, element);
 	}
-	const createNode = (node: DockNode, path: string): HTMLElement => {
+	const createNode = (node: VisibleDockNode): HTMLElement => {
 		if(node.type === "pane"){
 			const leaf = document.createElement("div");
 			leaf.className = "quire-dock-leaf";
@@ -23,8 +23,8 @@ export function mountDockTree(
 		}
 		const split = document.createElement("div");
 		split.className = "quire-dock-split " + (node.axis === "row" ? "dock-row" : "dock-column");
-		const first = createNode(node.first, path + "0");
-		const second = createNode(node.second, path + "1");
+		const first = createNode(node.first);
+		const second = createNode(node.second);
 		const separator = document.createElement("div");
 		separator.className = "quire-dock-splitter";
 		separator.setAttribute("role", "separator");
@@ -48,7 +48,7 @@ export function mountDockTree(
 				window.removeEventListener("pointermove", move);
 				window.removeEventListener("pointerup", stop);
 				window.removeEventListener("blur", stop);
-				onResize(path, ratio);
+				onResize(node.sourcePath, ratio);
 			};
 			window.addEventListener("pointermove", move);
 			window.addEventListener("pointerup", stop, { once: true });
@@ -57,11 +57,11 @@ export function mountDockTree(
 		split.append(first, separator, second);
 		return split;
 	};
-	const filtered = filterDockTree(layout, visible);
+	const filtered = visibleDockTree(layout, visible);
 	if(!filtered){ return; }
 	const root = document.createElement("div");
 	root.className = "quire-dock-root";
-	root.appendChild(createNode(filtered, ""));
+	root.appendChild(createNode(filtered));
 	const hidden = document.createElement("div");
 	hidden.className = "quire-dock-unused";
 	for(const id of ["explorer", "editor", "right"] as const){
