@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::io::{BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{atomic::{AtomicU64, Ordering}, mpsc, Arc, Mutex};
+use std::sync::{atomic::{AtomicBool, AtomicU64, Ordering}, mpsc, Arc, Mutex};
+use crate::logging::LogState;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
@@ -19,6 +20,8 @@ pub struct EditorState {
 
 struct EditorProcess {
 	session_id: u64,
+	logger: LogState,
+	expected_shutdown: Arc<AtomicBool>,
 	child: Child,
 	stdin: ChildStdin,
 	next_request_id: i64,
@@ -335,6 +338,10 @@ fn read_neovim(
 	stdout: impl std::io::Read,
 	stream: Channel<StreamMessage>,
 	pending: Arc<Mutex<HashMap<i64, PendingResponse>>>,
+	logger: LogState,
+	session_id: u64,
+	pid: u32,
+	expected_shutdown: Arc<AtomicBool>,
 ) {
 	let mut reader = BufReader::new(stdout);
 	loop {
@@ -353,6 +360,12 @@ fn read_neovim(
 			}
 			Err(error) => {
 				let message = error.to_string();
+				let expected = expected_shutdown.load(Ordering::SeqCst);
+				let _ = logger.push(
+					if expected { "info" } else { "error" }.to_string(),
+					"neovim".to_string(),
+					format!("RPC reader ended: session={session_id} pid={pid} expected_shutdown={expected} reason={message}"),
+				);
 				let _ = stream.send(StreamMessage::Closed { message: message.clone() });
 				if let Ok(mut pending) = pending.lock() {
 					for (_, sender) in pending.drain() {
@@ -366,17 +379,36 @@ fn read_neovim(
 }
 
 fn stop_process(process: &mut EditorProcess) {
+	process.expected_shutdown.store(true, Ordering::SeqCst);
+	let _ = process.logger.push(
+		"info".into(), "neovim".into(),
+		format!("Stopping Neovim: session={} pid={}", process.session_id, process.child.id()),
+	);
 	let _ = process.request_no_wait("nvim_command", vec![Value::from("qa!")]);
 	let deadline = Instant::now() + Duration::from_secs(1);
 	while Instant::now() < deadline {
 		match process.child.try_wait() {
-			Ok(Some(_)) => return,
+			Ok(Some(status)) => {
+				let _ = process.logger.push(
+					"info".into(), "neovim".into(),
+					format!("Neovim exited: session={} pid={} exit={status}", process.session_id, process.child.id()),
+				);
+				return;
+			},
 			Ok(None) => thread::sleep(Duration::from_millis(20)),
 			Err(_) => break,
 		}
 	}
+	let _ = process.logger.push(
+		"warn".into(), "neovim".into(),
+		format!("Neovim did not exit after 1s; forcing stop: session={} pid={}", process.session_id, process.child.id()),
+	);
 	let _ = process.child.kill();
-	let _ = process.child.wait();
+	let status = process.child.wait();
+	let _ = process.logger.push(
+		"info".into(), "neovim".into(),
+		format!("Neovim forced-stop completed: session={} pid={} result={status:?}", process.session_id, process.child.id()),
+	);
 }
 
 pub fn start_document(
@@ -385,9 +417,18 @@ pub fn start_document(
 	session_id: u64,
 	stream: Channel<StreamMessage>,
 	state: &EditorState,
+	logger: LogState,
 ) -> Result<(), String> {
+	let _ = logger.push(
+		"info".into(), "neovim".into(),
+		format!("Start requested: session={session_id} file={relative_path}"),
+	);
 	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
 	if session_id <= state.latest_session.load(Ordering::SeqCst) {
+		let _ = logger.push(
+			"warn".into(), "neovim".into(),
+			format!("Stale start ignored: session={session_id} latest={}", state.latest_session.load(Ordering::SeqCst)),
+		);
 		return Err("Stale editor start request ignored.".to_string());
 	}
 	state.latest_session.store(session_id, Ordering::SeqCst);
@@ -405,16 +446,34 @@ pub fn start_document(
 		.stdout(Stdio::piped())
 		.stderr(Stdio::inherit())
 		.spawn()
-		.map_err(|error| format!("nvim --embed failed: {error}"))?;
+		.map_err(|error| {
+			let _ = logger.push(
+				"error".into(), "neovim".into(),
+				format!("Neovim process spawn failed: session={session_id} reason={error}"),
+			);
+			format!("nvim --embed failed: {error}")
+		})?;
+	let pid = child.id();
+	let _ = logger.push(
+		"info".into(), "neovim".into(),
+		format!("Neovim process spawned: session={session_id} pid={pid}"),
+	);
 
 	let stdin = child.stdin.take().ok_or_else(|| "Neovim stdin is unavailable.".to_string())?;
 	let stdout = child.stdout.take().ok_or_else(|| "Neovim stdout is unavailable.".to_string())?;
 	let pending = Arc::new(Mutex::new(HashMap::new()));
 	let reader_pending = Arc::clone(&pending);
-	thread::spawn(move || read_neovim(stdout, stream, reader_pending));
+	let expected_shutdown = Arc::new(AtomicBool::new(false));
+	let reader_shutdown = Arc::clone(&expected_shutdown);
+	let reader_logger = logger.clone();
+	thread::spawn(move || {
+		read_neovim(stdout, stream, reader_pending, reader_logger, session_id, pid, reader_shutdown)
+	});
 
 	let mut process = EditorProcess {
 		session_id,
+		logger: logger.clone(),
+		expected_shutdown,
 		child,
 		stdin,
 		next_request_id: 1,
@@ -422,6 +481,7 @@ pub fn start_document(
 		relative_path,
 	};
 
+	let attach_result = (|| -> Result<(), String> {
 	process.request("nvim_set_client_info", vec![
 		Value::from("Quire"),
 		Value::Map(vec![(Value::from("prerelease"), Value::from("desktop"))]),
@@ -436,8 +496,20 @@ pub fn start_document(
 	]);
 	process.request("nvim_ui_attach", vec![Value::from(80), Value::from(24), options])?;
 	process.request("nvim_buf_attach", vec![Value::from(0), Value::from(true), Value::Map(vec![])])?;
-
+	Ok(())
+	})();
+	if let Err(error) = attach_result {
+		let _ = logger.push(
+			"error".into(), "neovim".into(),
+			format!("Neovim RPC initialization failed: session={session_id} pid={pid} reason={error}"),
+		);
+		return Err(error);
+	}
 	*slot = Some(process);
+	let _ = logger.push(
+		"info".into(), "neovim".into(),
+		format!("Neovim RPC attached: session={session_id} pid={pid}"),
+	);
 	Ok(())
 }
 
@@ -629,12 +701,17 @@ pub fn insert_text(text: String, state: &EditorState) -> Result<(), String> {
 }
 
 // UI component cleanup must not terminate a newer editor session.
-pub fn stop_session(session_id: u64, state: &EditorState) -> Result<(), String> {
+pub fn stop_session(session_id: u64, state: &EditorState, logger: &LogState) -> Result<(), String> {
 	let mut slot = state.process.lock().map_err(|_| "Editor state lock failed.".to_string())?;
 	if slot.as_ref().is_some_and(|process| process.session_id == session_id) {
 		if let Some(mut process) = slot.take() {
 			stop_process(&mut process);
 		}
+	}else{
+		let _ = logger.push(
+			"info".into(), "neovim".into(),
+			format!("Stale stop ignored: requested_session={session_id} active_session={:?}", slot.as_ref().map(|process| process.session_id)),
+		);
 	}
 	Ok(())
 }

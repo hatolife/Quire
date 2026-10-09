@@ -116,6 +116,7 @@ export default function NeovimEditor(props: Props) {
 	let active = true;
 	let sessionGeneration = 0;
 	let ownedSessionId = 0;
+	let lastReportedMode = "";
 	const highlights = new Map<number, Highlight>();
 	const [mode, setMode] = createSignal("unknown");
 	const [preeditText, setPreeditText] = createSignal("");
@@ -512,6 +513,8 @@ export default function NeovimEditor(props: Props) {
 		const sessionId = Date.now() * 1000 + (++editorSessionSequence % 1000);
 		ownedSessionId = sessionId;
 		started = false;
+		lastReportedMode = "";
+		props.onStatus("Neovim starting: session=" + sessionId + " file=" + props.relativePath);
 		setRestarting(true);
 		setClosedMessage(null);
 		bufferLines = [];
@@ -522,7 +525,10 @@ export default function NeovimEditor(props: Props) {
 			if(!active || generation !== sessionGeneration){ return; }
 			if(message.kind === "redraw"){
 				for(const event of message.events){ applyEvent(event); }
-				props.onStatus("Neovim connected / mode: " + mode());
+				if(mode() !== lastReportedMode){
+					lastReportedMode = mode();
+					props.onStatus("Neovim mode changed: session=" + sessionId + " mode=" + lastReportedMode);
+				}
 			}else if(message.kind === "buffer_lines"){
 				applyBufferLines(message);
 			}else if(message.kind === "error"){
@@ -531,7 +537,7 @@ export default function NeovimEditor(props: Props) {
 				started = false;
 				const detail = message.message || "Neovim process closed.";
 				setClosedMessage(detail);
-				props.onStatus("Neovim closed: " + detail);
+				props.onStatus("Neovim closed: session=" + sessionId + " reason=" + detail);
 			}
 		};
 
@@ -549,14 +555,14 @@ export default function NeovimEditor(props: Props) {
 			}
 			if(!active || generation !== sessionGeneration){ return; }
 			requestViewportLine();
-			props.onStatus("Neovim connected");
+			props.onStatus("Neovim connected: session=" + sessionId);
 			input.focus();
 		}catch(error){
 			if(!active || generation !== sessionGeneration){ return; }
 			started = false;
 			const detail = String(error);
 			setClosedMessage(detail);
-			props.onStatus("Neovim start error: " + detail);
+			props.onStatus("Neovim start error: session=" + sessionId + " reason=" + detail);
 		}finally{
 			setRestarting(false);
 		}
