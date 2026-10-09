@@ -24,6 +24,17 @@ Windows CIでは `quire-core` の自動テスト、Tauri production build、pack
 - ユーザーGit状態を壊さない履歴Snapshot。
 - 外部ファイル変更の検出と競合保護。
 
+## 開発ビルドの新しい操作（2026-10-09）
+
+- 画面左のコマンドレールは、**Settings → 左メニュー**で割り当て・並べ替え可能。コマンドとマクロを配置できます。
+- **Ctrl+Shift+P**でCommand Paletteを開けます。
+- **Settings → マクロ**でマクロ名と実行順のコマンドIDを登録できます。最大100ステップの逐次実行で、無効なコマンドや例外があれば停止します。任意コード実行や再帰マクロはできません。
+- Explorer / Editor / 右ペイン見出しの **⠿** をドラッグして配置を変更できます。上下・左右のドッキングと配置保存に対応します。
+- Explorer / Editor / Preview / Graph / Browserは **↗** またはコマンドから別ウィンドウに分離し、分離先の「メインへ戻す」でドッキングできます。
+
+**未完了:** Obsidian相当の任意の多段分割、右ペイン各タブの独立ドック、History/Settings/Logsの統合、全UI操作のコマンド経由への統一、分離Editorの実機Recovery検証。
+これらが済むまでMilestone 3の実運用検証開始条件を満たしたとは扱いません。
+
 ## Design documents
 
 初期構想は [docs/initial-concept/](docs/initial-concept/) にあります。
