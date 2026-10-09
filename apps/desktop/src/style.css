@@ -1724,3 +1724,42 @@ button.primary {
 .macro-command-list code {
 	user-select: text;
 }
+
+/* 分離ペインの内容はメインUIと同じ描画系を共有する。 */
+.floating-pane-app {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	background: #181818;
+}
+.floating-pane-toolbar {
+	display: flex;
+	flex: 0 0 38px;
+	align-items: center;
+	gap: 8px;
+	padding: 0 10px;
+	border-bottom: 1px solid #333;
+	background: #202020;
+	font-size: 12px;
+}
+.floating-pane-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	position: relative;
+	overflow: hidden;
+}
+.floating-explorer,
+.floating-preview {
+	overflow: auto;
+}
+.floating-preview .preview-scroll {
+	height: 100%;
+}
+.floating-pane-message {
+	padding: 5px 10px;
+	border-top: 1px solid #333;
+	font-size: 12px;
+	color: #aaa;
+}
