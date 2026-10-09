@@ -1273,6 +1273,8 @@ function App() {
 	};
 
 	const resetPaneLayout = () => {
+		setDockOrder(["explorer", "editor", "right"]);
+		setDockDirection("row");
 		setExplorerWidth(260);
 		setEditorRatio(0.5);
 		setExplorerVisible(true);
@@ -2901,6 +2903,21 @@ function App() {
 			},
 		},
 		{
+			id: "layout.dock.reset",
+			title: "Dock配置を初期化",
+			run: () => { setDockOrder(["explorer", "editor", "right"]); setDockDirection("row"); },
+		},
+		{
+			id: "layout.dock.vertical",
+			title: "Dockを縦方向に並べる",
+			run: () => setDockDirection("column"),
+		},
+		{
+			id: "layout.dock.horizontal",
+			title: "Dockを横方向に並べる",
+			run: () => setDockDirection("row"),
+		},
+		{
 			id: "layout.reset",
 			title: "ペインレイアウトを初期化",
 			run: () => resetPaneLayout(),
@@ -3514,6 +3531,12 @@ function App() {
 							</section>
 							<section class="settings-section">
 								<h3>Layout</h3>
+								<div class="layout-preset-actions">
+									<button classList={{ active: dockDirection() === "row" }} onClick={() => setDockDirection("row")}>左右に並べる</button>
+									<button classList={{ active: dockDirection() === "column" }} onClick={() => setDockDirection("column")}>上下に並べる</button>
+									<button onClick={() => { setDockOrder(["explorer", "editor", "right"]); setDockDirection("row"); }}>Dockを初期化</button>
+								</div>
+								<div class="settings-summary">ペイン見出しの⠿をドラッグすると配置を変更できます。領域上端・下端は上下、左右中央は横方向にドッキングします。</div>
 								<label class="settings-toggle">
 									<input type="checkbox" checked={explorerVisible()} onChange={event => setExplorerVisible(event.currentTarget.checked)} />
 									<span>Explorerを表示</span>
