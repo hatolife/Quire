@@ -3051,10 +3051,15 @@ function App() {
 				<div
 					ref={workspaceElement}
 					class="workspace"
-					style={"grid-template-columns: " + workspaceGridTemplate()}
+					classList={{ "dock-column": dockDirection() === "column", "dock-dragging": draggingDock() !== null }}
+					style={{
+						"grid-template-columns": dockDirection() === "row" ? dockTracks() : "minmax(0, 1fr)",
+						"grid-template-rows": dockDirection() === "column" ? dockTracks() : "minmax(0, 1fr)",
+					}}
 				>
-					<aside class="explorer" classList={{ hidden: !explorerVisible() || Boolean(floatingPanels().explorer) }}>
+					<aside data-dock-panel="explorer" style={{ order: String(dockIndex("explorer") * 2) }} class="explorer" classList={{ hidden: !explorerVisible() || Boolean(floatingPanels().explorer) }}>
 						<div class="pane-title explorer-title">
+							<span class="dock-grip" title="ドラッグでドッキング位置を変更" onPointerDown={event => startDockMove(event as PointerEvent, "explorer")}>⠿</span>
 							<button class="explorer-mode" classList={{ active: explorerMode() === "files" }} onClick={() => setExplorerMode("files")}>Files</button>
 							<button class="explorer-mode" classList={{ active: explorerMode() === "tags" }} onClick={() => setExplorerMode("tags")}>Tags</button>
 							<button class="explorer-mode" classList={{ active: explorerMode() === "outline" }} onClick={() => setExplorerMode("outline")}>Outline</button>
@@ -3162,13 +3167,15 @@ function App() {
 					</aside>
 					<div
 						class="pane-splitter explorer-splitter"
-						classList={{ hidden: !explorerVisible() || Boolean(floatingPanels().explorer) }}
+						style={{ order: "1" }}
+						classList={{ hidden: visibleDockPanels().length < 2 }}
 						role="separator"
-						aria-orientation="vertical"
-						onPointerDown={event => beginExplorerResize(event as PointerEvent)}
+						aria-orientation={dockDirection() === "column" ? "horizontal" : "vertical"}
+						onPointerDown={event => beginDockResize(event as PointerEvent, 0)}
 					/>
-					<section class="editor-pane" classList={{ "has-document-tabs": openDocuments().length > 0 }}>
+					<section data-dock-panel="editor" style={{ order: String(dockIndex("editor") * 2) }} class="editor-pane" classList={{ "has-document-tabs": openDocuments().length > 0 }}>
 						<div class="pane-title">
+							<span class="dock-grip" title="ドラッグでドッキング位置を変更" onPointerDown={event => startDockMove(event as PointerEvent, "editor")}>⠿</span>
 							<span class="pane-document-path">{document()?.relativePath ?? "Editor"}</span>
 							<Show when={dirty()}><span class="dirty-mark">●</span></Show>
 							<Show when={externalConflict()}><span class="external-conflict">外部変更</span></Show>
@@ -3221,13 +3228,15 @@ function App() {
 					</section>
 					<div
 						class="pane-splitter right-splitter"
-						classList={{ hidden: !rightPaneVisible() }}
+						style={{ order: "3" }}
+						classList={{ hidden: visibleDockPanels().length < 3 }}
 						role="separator"
-						aria-orientation="vertical"
-						onPointerDown={event => beginEditorPreviewResize(event as PointerEvent)}
+						aria-orientation={dockDirection() === "column" ? "horizontal" : "vertical"}
+						onPointerDown={event => beginDockResize(event as PointerEvent, 1)}
 					/>
-					<section class="preview-pane" classList={{ hidden: !rightPaneVisible() }}>
+					<section data-dock-panel="right" style={{ order: String(dockIndex("right") * 2) }} class="preview-pane" classList={{ hidden: !rightPaneVisible() }}>
 						<div class="pane-title right-pane-title">
+							<span class="dock-grip" title="ドラッグでドッキング位置を変更" onPointerDown={event => startDockMove(event as PointerEvent, "right")}>⠿</span>
 							<button
 								class="pane-tab"
 								classList={{ active: rightPaneMode() === "preview" }}
@@ -3289,7 +3298,7 @@ function App() {
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
 								<Show when={!floatingPanels().browser}><BrowserPane
-									active={rightPaneVisible() && rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !templatePickerOpen() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
+									active={rightPaneVisible() && rightPaneMode() === "browser" && !draggingDock() && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !templatePickerOpen() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
 									navigateTo={browserTargetUrl()}
 									onUrlChange={url => setBrowserTargetUrl(url)}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
