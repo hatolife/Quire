@@ -67,6 +67,9 @@ jobs:
         working-directory: apps/desktop
         run: npm run test:dock
 
+      - name: Verify desktop settings serialization
+        run: cargo test -p quire-desktop --locked
+
       - name: Build Quire desktop executable
         working-directory: apps/desktop
         run: npm run tauri build -- --no-bundle
