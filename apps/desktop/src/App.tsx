@@ -3228,6 +3228,7 @@ function App() {
 							<Show when={externalConflict()}><span class="external-conflict">外部変更</span></Show>
 							<span class="toolbar-spacer" />
 							<Show when={document()}>
+								<button class="pane-action" title="Editorを別ウィンドウに分離" onClick={() => void detachPane("editor")}>↗</button>
 								<button class="pane-action" title="画像を追加" onClick={() => void addImageAsset()}>画像</button>
 								<button class="pane-action" title="移動・名前変更" disabled={dirty()} onClick={() => void moveCurrentDocument()}>移動</button>
 								<button class="pane-action danger" title="削除" disabled={dirty()} onClick={() => void deleteCurrentDocument()}>削除</button>
@@ -3257,6 +3258,7 @@ function App() {
 								</For>
 							</div>
 						</Show>
+						<Show when={!floatingPanels().editor} fallback={<div class="empty-pane">Editorは別ウィンドウで開いています。</div>}>
 						<For
 							each={document() ? [{ relativePath: document()!.relativePath, session: editorSession() }] : []}
 							fallback={<div class="empty-pane">左からファイルを選択してください。</div>}
@@ -3271,7 +3273,7 @@ function App() {
 									onSave={() => void saveDocument()}
 								/>
 							)}
-						</For>
+						</For></Show>
 					</section>
 					<div
 						class="pane-splitter right-splitter"
