@@ -531,6 +531,11 @@ fn log_clear(state: tauri::State<'_, logging::LogState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn log_file_path(state: tauri::State<'_, logging::LogState>) -> Result<Option<String>, String> {
+	state.path()
+}
+
+#[tauri::command]
 fn history_create_snapshot(
 	message: String,
 	retention_limit: usize,
@@ -647,6 +652,18 @@ fn main() {
 		.manage(editor::EditorState::default())
 		.manage(logging::LogState::default())
 		.manage(watcher::WatcherState::default())
+		.setup(|app| {
+			let data_directory = app.path().app_local_data_dir()?;
+			let log_path = data_directory.join("logs").join("quire.log");
+			let logger = app.state::<logging::LogState>();
+			logger.configure(log_path).map_err(std::io::Error::other)?;
+			logger.push(
+				"info".to_string(),
+				"app".to_string(),
+				format!("Quire started, build={}", env!("CARGO_PKG_VERSION")),
+			).map_err(std::io::Error::other)?;
+			Ok(())
+		})
 		.invoke_handler(tauri::generate_handler![
 			workspace_open,
 			workspace_ensure_directory,
@@ -698,6 +715,7 @@ fn main() {
 			log_append,
 			log_recent,
 			log_clear,
+			log_file_path,
 			history_create_snapshot,
 			history_prune,
 			history_list,

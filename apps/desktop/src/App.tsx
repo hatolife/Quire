@@ -35,6 +35,7 @@ import {
 	historyRestoreFile,
 	logAppend,
 	logClear,
+	logFilePath,
 	logRecent,
 	recoveryClear,
 	recoveryLoad,
@@ -1007,6 +1008,17 @@ function App() {
 			setLogs([]);
 		}catch(error){
 			setStatus("Log clear error: " + String(error));
+		}
+	};
+
+	const copyLogFilePath = async () => {
+		try{
+			const path = await logFilePath();
+			if(!path){ throw new Error("ログファイルが初期化されていません。"); }
+			await navigator.clipboard.writeText(path);
+			updateStatus("ログファイルの場所をコピーしました: " + path, "info", "log");
+		}catch(error){
+			updateStatus("ログファイルの場所: " + String(error), "error", "log");
 		}
 	};
 
@@ -3327,7 +3339,8 @@ function App() {
 						<span>{logs().length} / 300</span>
 						<span class="toolbar-spacer" />
 						<button onClick={() => void refreshLogs()}>更新</button>
-						<button onClick={() => void clearLogs()}>クリア</button>
+						<button onClick={() => void copyLogFilePath()} title="永続ログのフルパスをコピー">ログファイル</button>
+						<button onClick={() => void clearLogs()} title="画面上のログだけを消去。ファイルは保持">表示をクリア</button>
 						<button onClick={() => setLogOpen(false)}>閉じる</button>
 					</div>
 					<div class="log-list">

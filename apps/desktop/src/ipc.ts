@@ -262,6 +262,10 @@ export function logClear() {
 	return invoke<void>("log_clear");
 }
 
+export function logFilePath() {
+	return invoke<string | null>("log_file_path");
+}
+
 export function historyCreateSnapshot(message: string, retentionLimit: number) {
 	return invoke<Snapshot>("history_create_snapshot", { message, retentionLimit });
 }
