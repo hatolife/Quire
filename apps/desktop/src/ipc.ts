@@ -1,3 +1,4 @@
+import type { DockNode } from "./layout/dock-tree";
 import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type WorkspaceInfo = {
@@ -90,6 +91,7 @@ export type LayoutPreset = {
 	rightPaneVisible: boolean;
 	explorerMode: string;
 	rightPaneMode: string;
+	dockTree?: DockNode;
 };
 
 export type MacroDefinition = {
@@ -117,6 +119,7 @@ export type DesktopSettings = {
 	sidebarCommands: string[];
 	dockOrder: string[];
 	dockDirection: string;
+	dockTree: DockNode;
 	dailyNotesDirectory: string;
 	dailyNoteTemplate: string;
 	lastRightPane: string;
