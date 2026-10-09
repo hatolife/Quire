@@ -3,6 +3,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import MarkdownIt from "markdown-it";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emitTo, listen } from "@tauri-apps/api/event";
+import type { FloatingPaneKind, FloatingPaneState } from "./layout/DetachedPane";
 import BrowserPane from "./browser/BrowserPane";
 import GraphPane from "./graph/GraphPane";
 import CommandPalette, { type AppCommand } from "./commands/CommandPalette";
@@ -826,6 +829,8 @@ function App() {
 	let previewResolveGeneration = 0;
 	let focusModeRestore: { explorer: boolean; right: boolean } | undefined;
 	const assetCache = new Map<string, Promise<string>>();
+	const floatingHandles = new Map<FloatingPaneKind, WebviewWindow>();
+	const floatingUnlisteners: Array<() => void> = [];
 
 	const [workspace, setWorkspace] = createSignal<WorkspaceInfo | null>(null);
 	const [recentWorkspaces, setRecentWorkspaces] = createSignal<string[]>([]);
@@ -872,6 +877,7 @@ function App() {
 	const [macros, setMacros] = createSignal<MacroDefinition[]>([]);
 	const [sidebarCommands, setSidebarCommands] = createSignal<string[]>(["workspace.quickOpen", "document.daily.open", "pane.preview", "pane.browser", "pane.graph", "history.show"]);
 	const [macroRunning, setMacroRunning] = createSignal(false);
+	const [floatingPanels, setFloatingPanels] = createSignal<Partial<Record<FloatingPaneKind, string>>>({});
 	const [dailyNotesDirectory, setDailyNotesDirectory] = createSignal("Daily");
 	const [dailyNoteTemplate, setDailyNoteTemplate] = createSignal("Templates/Daily.md");
 	const [templatePickerOpen, setTemplatePickerOpen] = createSignal(false);
@@ -2607,6 +2613,57 @@ function App() {
 		}
 		updateStatus("マクロを保存しました: " + name, "info", "macro");
 	};
+
+
+	const floatingPaneState = (): FloatingPaneState => ({
+		workspaceName: workspace()?.name ?? null,
+		documentPath: document()?.relativePath ?? null,
+		previewHtml: preview(),
+		graph: linkGraph(),
+		entries: entries(),
+		browserUrl: browserTargetUrl(),
+	});
+	const restoreFloatingPane = (kind: FloatingPaneKind, label: string) => {
+		if(floatingPanels()[kind] !== label){ return; }
+		setFloatingPanels(current => {
+			const next = { ...current };
+			delete next[kind];
+			return next;
+		});
+		floatingHandles.delete(kind);
+		if(kind === "explorer"){ setExplorerVisible(true); }
+		else{ setRightPaneVisible(true); setRightPaneMode(kind); }
+	};
+	const detachPane = (kind: FloatingPaneKind) => {
+		const existing = floatingHandles.get(kind);
+		if(existing){ void existing.setFocus(); return; }
+		if(!workspace() && kind !== "browser"){ return; }
+		const label = "floating-" + kind + "-" + Date.now().toString(36);
+		const floating = new WebviewWindow(label, {
+			url: "index.html?pane=" + kind,
+			title: "Quire — " + kind,
+			width: kind === "explorer" ? 420 : 900,
+			height: 650,
+			minWidth: 300,
+			minHeight: 250,
+		});
+		floatingHandles.set(kind, floating);
+		floating.once("tauri://created", () => {
+			setFloatingPanels(current => ({ ...current, [kind]: label }));
+		});
+		floating.once("tauri://error", event => {
+			floatingHandles.delete(kind);
+			updateStatus("別ウィンドウの作成に失敗しました: " + String(event.payload), "error", "layout");
+		});
+		void floating.onCloseRequested(() => restoreFloatingPane(kind, label))
+			.catch(error => updateStatus("Floating window close handler: " + String(error), "error", "layout"));
+	};
+	createEffect(() => {
+		const data = floatingPaneState();
+		for(const label of Object.values(floatingPanels())){
+			if(label){ void emitTo(label, "quire:pane-state", data).catch(error => updateStatus("Pane sync error: " + String(error), "error", "layout")); }
+		}
+	});
 
 	const commandSymbol = (id: string) => {
 		if(id.startsWith("macro.")){ return "▶"; }
