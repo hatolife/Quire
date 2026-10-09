@@ -808,6 +808,8 @@ function linkFragment(value: string): string | undefined {
 	return value.slice(index + 1);
 }
 
+type DockPanel = "explorer" | "editor" | "right";
+
 function App() {
 	let workspaceElement!: HTMLDivElement;
 	let previewElement!: HTMLDivElement;
@@ -878,6 +880,9 @@ function App() {
 	const [sidebarCommands, setSidebarCommands] = createSignal<string[]>(["workspace.quickOpen", "document.daily.open", "pane.preview", "pane.browser", "pane.graph", "history.show"]);
 	const [macroRunning, setMacroRunning] = createSignal(false);
 	const [floatingPanels, setFloatingPanels] = createSignal<Partial<Record<FloatingPaneKind, string>>>({});
+	const [dockOrder, setDockOrder] = createSignal<DockPanel[]>(["explorer", "editor", "right"]);
+	const [dockDirection, setDockDirection] = createSignal<"row" | "column">("row");
+	const [draggingDock, setDraggingDock] = createSignal<DockPanel | null>(null);
 	const [dailyNotesDirectory, setDailyNotesDirectory] = createSignal("Daily");
 	const [dailyNoteTemplate, setDailyNoteTemplate] = createSignal("Templates/Daily.md");
 	const [templatePickerOpen, setTemplatePickerOpen] = createSignal(false);
@@ -1405,6 +1410,8 @@ function App() {
 		layoutPresets();
 		macros();
 		sidebarCommands();
+		dockOrder();
+		dockDirection();
 		dailyNotesDirectory();
 		dailyNoteTemplate();
 		rightPaneMode();
@@ -1502,6 +1509,8 @@ function App() {
 		layoutPresets: layoutPresets(),
 		macros: macros(),
 		sidebarCommands: sidebarCommands(),
+		dockOrder: dockOrder(),
+		dockDirection: dockDirection(),
 		dailyNotesDirectory: dailyNotesDirectory(),
 		dailyNoteTemplate: dailyNoteTemplate(),
 		lastRightPane: rightPaneMode(),
@@ -1541,6 +1550,12 @@ function App() {
 				setHistoryRetentionSnapshots(Math.max(10, Math.min(10000, settings.historyRetentionSnapshots)));
 				setTemplateDirectory(settings.templateDirectory?.trim() || "Templates");
 				setLayoutPresets(settings.layoutPresets ?? []);
+				setDockOrder(() => {
+					const saved = settings.dockOrder ?? [];
+					return saved.length === 3 && new Set(saved).size === 3 && saved.every(value => ["explorer", "editor", "right"].includes(value))
+						? saved as DockPanel[] : ["explorer", "editor", "right"];
+				});
+				setDockDirection(settings.dockDirection === "column" ? "column" : "row");
 				setMacros(settings.macros ?? []);
 				setSidebarCommands(settings.sidebarCommands ?? ["workspace.quickOpen", "document.daily.open", "pane.preview", "pane.browser", "pane.graph", "history.show"]);
 				setDailyNotesDirectory(settings.dailyNotesDirectory?.trim() || "Daily");
