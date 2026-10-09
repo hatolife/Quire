@@ -32,7 +32,7 @@ Windows CIでは `quire-core` の自動テスト、Tauri production build、pack
 - Explorer / Editor / 右ペイン見出しの **⠿** をドラッグして配置を変更できます。上下・左右を混在させる再帰分割ツリーと配置保存に対応します。
 - Explorer / Editor / Preview / Graph / Browserは **↗** またはコマンドから別ウィンドウに分離し、分離先の「メインへ戻す」でドッキングできます。
 
-**未完了:** Obsidian相当の任意の多段分割、右ペイン各タブの独立ドック、History/Settings/Logsの統合、全UI操作のコマンド経由への統一、分離Editorの実機Recovery検証。
+**未完了:** Preview / Graph / Browserそれぞれの独立ドック（現在は右ペイングループ単位）、任意個数の同種ペイン、History/Settings/Logsの統合、全UI操作のコマンド経由への統一、分離Editorの実機Recovery検証。
 これらが済むまでMilestone 3の実運用検証開始条件を満たしたとは扱いません。
 
 ## Design documents
