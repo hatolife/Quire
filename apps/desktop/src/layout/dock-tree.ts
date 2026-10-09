@@ -88,3 +88,18 @@ export function setDockAxis(tree: DockNode, axis: DockAxis): DockNode {
 	if(tree.type === "pane"){ return tree; }
 	return { ...tree, axis, first: setDockAxis(tree.first, axis), second: setDockAxis(tree.second, axis) };
 }
+
+export type VisibleDockNode =
+	| { type: "pane"; id: DockPanelId }
+	| { type: "split"; axis: DockAxis; ratio: number; sourcePath: string; first: VisibleDockNode; second: VisibleDockNode };
+
+export function visibleDockTree(tree: DockNode, visible: ReadonlySet<DockPanelId>): VisibleDockNode | null {
+	const project = (node: DockNode, path: string): VisibleDockNode | null => {
+		if(node.type === "pane"){ return visible.has(node.id) ? { type: "pane", id: node.id } : null; }
+		const first = project(node.first, path + "0"), second = project(node.second, path + "1");
+		if(!first){ return second; }
+		if(!second){ return first; }
+		return { type: "split", axis: node.axis, ratio: node.ratio, sourcePath: path, first, second };
+	};
+	return project(tree, "");
+}
