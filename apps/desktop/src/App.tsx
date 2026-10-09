@@ -2697,9 +2697,13 @@ function App() {
 		});
 		floatingHandles.delete(kind);
 		if(kind === "explorer"){ setExplorerVisible(true); }
-		else{ setRightPaneVisible(true); setRightPaneMode(kind); }
+		else if(kind !== "editor"){ setRightPaneVisible(true); setRightPaneMode(kind); }
 	};
-	const detachPane = (kind: FloatingPaneKind) => {
+	const detachPane = async (kind: FloatingPaneKind) => {
+		if(kind === "editor" && dirty()){
+			await saveDocument();
+			if(dirty()){ updateStatus("Editorを分離する前に未保存内容を解決してください。", "warn", "layout"); return; }
+		}
 		const existing = floatingHandles.get(kind);
 		if(existing){ void existing.setFocus(); return; }
 		if(!workspace() && kind !== "browser"){ return; }
@@ -2720,7 +2724,18 @@ function App() {
 			floatingHandles.delete(kind);
 			updateStatus("別ウィンドウの作成に失敗しました: " + String(event.payload), "error", "layout");
 		});
-		void floating.onCloseRequested(() => restoreFloatingPane(kind, label))
+		void floating.onCloseRequested(event => {
+			if(kind === "editor" && dirty()){
+				event.preventDefault();
+				if(!saving()){
+					void saveDocument().then(() => {
+						if(!dirty()){ void floating.close(); }
+					});
+				}
+				return;
+			}
+			restoreFloatingPane(kind, label);
+		})
 			.catch(error => updateStatus("Floating window close handler: " + String(error), "error", "layout"));
 	};
 	createEffect(() => {
@@ -2953,7 +2968,7 @@ function App() {
 			keywords: "layout preview browser graph pane toggle",
 			run: () => setRightPaneVisible(value => !value),
 		},
-		...(["explorer", "preview", "browser", "graph"] as FloatingPaneKind[]).map(kind => ({
+		...(["explorer", "editor", "preview", "browser", "graph"] as FloatingPaneKind[]).map(kind => ({
 			id: "pane." + kind + ".detach",
 			title: kind + "を別ウィンドウで開く",
 			keywords: "float undock window detach",
