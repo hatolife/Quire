@@ -2633,7 +2633,8 @@ function App() {
 		const command = commands().find(candidate => candidate.id === id);
 		if(!command){ throw new Error("不明なコマンド: " + id); }
 		if(command.enabled === false){ throw new Error("現在実行できないコマンド: " + id); }
-		await command.run();
+		const result = await command.run();
+		if(result === false){ throw new Error("コマンドが失敗または中止されました: " + id); }
 	};
 
 	const invokeCommand = async (id: string) => {
