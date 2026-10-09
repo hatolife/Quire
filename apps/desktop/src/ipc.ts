@@ -305,22 +305,22 @@ export function assetRead(documentRelativePath: string, source: string) {
 	return invoke<string>("asset_read", { documentRelativePath, source });
 }
 
-export function browserNavigate(url: string) {
-	return invoke<void>("browser_navigate", { url });
+export function browserNavigate(url: string, webviewLabel = "browser-pane") {
+	return invoke<void>("browser_navigate", { url, webviewLabel });
 }
 
-export function browserReload() {
-	return invoke<void>("browser_reload");
+export function browserReload(webviewLabel = "browser-pane") {
+	return invoke<void>("browser_reload", { webviewLabel });
 }
 
-export function browserBack() {
-	return invoke<void>("browser_back");
+export function browserBack(webviewLabel = "browser-pane") {
+	return invoke<void>("browser_back", { webviewLabel });
 }
 
-export function browserForward() {
-	return invoke<void>("browser_forward");
+export function browserForward(webviewLabel = "browser-pane") {
+	return invoke<void>("browser_forward", { webviewLabel });
 }
 
-export function browserCurrentUrl() {
-	return invoke<string>("browser_current_url");
+export function browserCurrentUrl(webviewLabel = "browser-pane") {
+	return invoke<string>("browser_current_url", { webviewLabel });
 }
