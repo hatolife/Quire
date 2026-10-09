@@ -1,7 +1,7 @@
 use rmpv::Value;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{atomic::{AtomicBool, AtomicU64, Ordering}, mpsc, Arc, Mutex};
@@ -444,7 +444,7 @@ pub fn start_document(
 		.arg(&path)
 		.stdin(Stdio::piped())
 		.stdout(Stdio::piped())
-		.stderr(Stdio::inherit())
+		.stderr(Stdio::piped())
 		.spawn()
 		.map_err(|error| {
 			let _ = logger.push(
@@ -458,6 +458,30 @@ pub fn start_document(
 		"info".into(), "neovim".into(),
 		format!("Neovim process spawned: session={session_id} pid={pid}"),
 	);
+	// Keep stderr separate from stdout: stdout carries binary MessagePack RPC.
+	// On Windows GUI builds inherited stderr may not have a visible console.
+	if let Some(stderr) = child.stderr.take() {
+		let error_logger = logger.clone();
+		thread::spawn(move || {
+			for line in BufReader::new(stderr).lines() {
+				match line {
+					Ok(message) => {
+						let _ = error_logger.push(
+							"warn".into(), "neovim-stderr".into(),
+							format!("session={session_id} pid={pid} {message}"),
+						);
+					}
+					Err(error) => {
+						let _ = error_logger.push(
+							"error".into(), "neovim-stderr".into(),
+							format!("stderr reader failed: session={session_id} pid={pid} reason={error}"),
+						);
+						break;
+					}
+				}
+			}
+		});
+	}
 
 	let stdin = child.stdin.take().ok_or_else(|| "Neovim stdin is unavailable.".to_string())?;
 	let stdout = child.stdout.take().ok_or_else(|| "Neovim stdout is unavailable.".to_string())?;
