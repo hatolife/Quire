@@ -144,3 +144,36 @@ pub fn save(app: &tauri::AppHandle, settings: &DesktopSettings) -> Result<(), St
 	fs::write(&path, content)
 		.map_err(|error| format!("Failed to write {}: {error}", path.display()))
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn settings_round_trip_keeps_nested_dock_tree_and_macros() {
+		let mut settings = DesktopSettings::default();
+		settings.macros.push(MacroDefinition {
+			name: "Test".into(),
+			steps: vec!["document.save".into(), "workspace.snapshot".into()],
+		});
+		let text = toml::to_string_pretty(&settings).unwrap();
+		let restored: DesktopSettings = toml::from_str(&text).unwrap();
+		assert_eq!(restored.macros.len(), 1);
+		assert_eq!(restored.sidebar_commands.len(), 6);
+		match restored.dock_tree {
+			DockNode::Split { first, second, .. } => {
+				assert!(matches!(*first, DockNode::Pane { .. }));
+				assert!(matches!(*second, DockNode::Split { .. }));
+			}
+			_ => panic!("Dock tree root must remain a split."),
+		}
+	}
+
+	#[test]
+	fn old_settings_use_new_defaults() {
+		let restored: DesktopSettings = toml::from_str("explorerWidth = 300").unwrap();
+		assert_eq!(restored.explorer_width, 300.0);
+		assert!(restored.floating_panes.is_empty());
+		assert!(matches!(restored.dock_tree, DockNode::Split { .. }));
+	}
+}
