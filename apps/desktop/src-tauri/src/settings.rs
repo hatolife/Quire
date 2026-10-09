@@ -42,6 +42,8 @@ pub struct DesktopSettings {
 	pub layout_presets: Vec<LayoutPreset>,
 	pub macros: Vec<MacroDefinition>,
 	pub sidebar_commands: Vec<String>,
+	pub dock_order: Vec<String>,
+	pub dock_direction: String,
 	pub daily_notes_directory: String,
 	pub daily_note_template: String,
 	pub last_right_pane: String,
@@ -67,6 +69,8 @@ impl Default for DesktopSettings {
 			template_directory: "Templates".to_string(),
 			layout_presets: Vec::new(),
 			macros: Vec::new(),
+			dock_order: vec!["explorer".into(), "editor".into(), "right".into()],
+			dock_direction: "row".into(),
 			sidebar_commands: vec![
 				"workspace.quickOpen".into(),
 				"document.daily.open".into(),
