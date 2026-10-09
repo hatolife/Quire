@@ -58,6 +58,7 @@ import {
 	type DesktopSettings,
 	type Document,
 	type LayoutPreset,
+	type MacroDefinition,
 	type LinkGraph,
 	type LogEntry,
 	type RecoveryDraft,
@@ -868,6 +869,9 @@ function App() {
 	const [historyRetentionSnapshots, setHistoryRetentionSnapshots] = createSignal(200);
 	const [templateDirectory, setTemplateDirectory] = createSignal("Templates");
 	const [layoutPresets, setLayoutPresets] = createSignal<LayoutPreset[]>([]);
+	const [macros, setMacros] = createSignal<MacroDefinition[]>([]);
+	const [sidebarCommands, setSidebarCommands] = createSignal<string[]>(["workspace.quickOpen", "document.daily.open", "pane.preview", "pane.browser", "pane.graph", "history.show"]);
+	const [macroRunning, setMacroRunning] = createSignal(false);
 	const [dailyNotesDirectory, setDailyNotesDirectory] = createSignal("Daily");
 	const [dailyNoteTemplate, setDailyNoteTemplate] = createSignal("Templates/Daily.md");
 	const [templatePickerOpen, setTemplatePickerOpen] = createSignal(false);
@@ -1393,6 +1397,8 @@ function App() {
 		historyRetentionSnapshots();
 		templateDirectory();
 		layoutPresets();
+		macros();
+		sidebarCommands();
 		dailyNotesDirectory();
 		dailyNoteTemplate();
 		rightPaneMode();
@@ -1488,6 +1494,8 @@ function App() {
 		historyRetentionSnapshots: historyRetentionSnapshots(),
 		templateDirectory: templateDirectory(),
 		layoutPresets: layoutPresets(),
+		macros: macros(),
+		sidebarCommands: sidebarCommands(),
 		dailyNotesDirectory: dailyNotesDirectory(),
 		dailyNoteTemplate: dailyNoteTemplate(),
 		lastRightPane: rightPaneMode(),
@@ -1527,6 +1535,8 @@ function App() {
 				setHistoryRetentionSnapshots(Math.max(10, Math.min(10000, settings.historyRetentionSnapshots)));
 				setTemplateDirectory(settings.templateDirectory?.trim() || "Templates");
 				setLayoutPresets(settings.layoutPresets ?? []);
+				setMacros(settings.macros ?? []);
+				setSidebarCommands(settings.sidebarCommands ?? ["workspace.quickOpen", "document.daily.open", "pane.preview", "pane.browser", "pane.graph", "history.show"]);
 				setDailyNotesDirectory(settings.dailyNotesDirectory?.trim() || "Daily");
 				setDailyNoteTemplate(settings.dailyNoteTemplate?.trim() ?? "");
 				setRightPaneMode(settings.lastRightPane === "browser" ? "browser" : settings.lastRightPane === "graph" ? "graph" : "preview");
@@ -2545,6 +2555,73 @@ function App() {
 		}
 	};
 
+
+	const runCommand = async (id: string) => {
+		const command = commands().find(candidate => candidate.id === id);
+		if(!command){ throw new Error("不明なコマンド: " + id); }
+		if(command.enabled === false){ throw new Error("現在実行できないコマンド: " + id); }
+		await command.run();
+	};
+
+	const invokeCommand = async (id: string) => {
+		try{
+			await runCommand(id);
+		}catch(error){
+			updateStatus("Command error: " + String(error), "error", "command");
+		}
+	};
+
+	const runMacro = async (macro: MacroDefinition) => {
+		if(macroRunning()){ throw new Error("別のマクロを実行中です。"); }
+		if(macro.steps.length === 0 || macro.steps.length > 100){ throw new Error("マクロのステップ数が不正です。"); }
+		setMacroRunning(true);
+		try{
+			for(const id of macro.steps){
+				if(id.startsWith("macro.")){ throw new Error("再帰マクロは禁止です: " + id); }
+				await runCommand(id);
+			}
+			updateStatus("マクロ完了: " + macro.name, "info", "macro");
+		}finally{
+			setMacroRunning(false);
+		}
+	};
+
+	const editMacro = (existing?: MacroDefinition) => {
+		const nameInput = window.prompt("マクロ名を入力してください。", existing?.name ?? "新しいマクロ");
+		if(nameInput === null){ return; }
+		const name = nameInput.trim();
+		if(!name || name.length > 80 || name.includes(".")){ updateStatus("マクロ名が不正です。", "warn", "macro"); return; }
+		const idsInput = window.prompt("実行するコマンドIDを順番に入力してください（改行またはカンマ区切り）。コマンド一覧でIDを確認できます。", existing?.steps.join("\n") ?? "document.save\nworkspace.snapshot");
+		if(idsInput === null){ return; }
+		const steps = idsInput.split(/[\n,]+/).map(value => value.trim()).filter(Boolean);
+		if(steps.length === 0 || steps.length > 100 || steps.some(id => id.startsWith("macro.") || !commands().some(command => command.id === id))){
+			updateStatus("マクロには存在する通常コマンドIDを1〜100個指定してください。", "warn", "macro");
+			return;
+		}
+		setMacros(current => {
+			const filtered = current.filter(value => value.name !== existing?.name && value.name !== name);
+			return [...filtered, { name, steps }];
+		});
+		if(existing && existing.name !== name){
+			setSidebarCommands(current => current.map(value => value === "macro." + existing.name ? "macro." + name : value));
+		}
+		updateStatus("マクロを保存しました: " + name, "info", "macro");
+	};
+
+	const commandSymbol = (id: string) => {
+		if(id.startsWith("macro.")){ return "▶"; }
+		if(id.includes("search") || id.includes("quickOpen")){ return "⌕"; }
+		if(id.includes("daily")){ return "日"; }
+		if(id.includes("preview")){ return "◫"; }
+		if(id.includes("browser")){ return "◎"; }
+		if(id.includes("graph")){ return "◇"; }
+		if(id.includes("history") || id.includes("snapshot")){ return "↶"; }
+		if(id.includes("settings")){ return "⚙"; }
+		if(id.includes("folder")){ return "▣"; }
+		if(id.includes("create")){ return "＋"; }
+		return "•";
+	};
+
 	const commands = (): AppCommand[] => [
 		{
 			id: "workspace.open",
@@ -2573,6 +2650,24 @@ function App() {
 			shortcut: "Ctrl+N",
 			enabled: workspace() !== null,
 			run: () => createDocument(),
+		},
+		{
+			id: "document.move",
+			title: "Documentを移動・名前変更",
+			enabled: document() !== null && !dirty(),
+			run: () => moveCurrentDocument(),
+		},
+		{
+			id: "document.delete",
+			title: "Documentを削除",
+			enabled: document() !== null && !dirty(),
+			run: () => deleteCurrentDocument(),
+		},
+		{
+			id: "workspace.explorer.refresh",
+			title: "Explorerを再読込",
+			enabled: workspace() !== null,
+			run: () => refreshExplorer(),
 		},
 		{
 			id: "document.image.add",
@@ -2686,6 +2781,11 @@ function App() {
 			},
 		},
 		{
+			id: "layout.reset",
+			title: "ペインレイアウトを初期化",
+			run: () => resetPaneLayout(),
+		},
+		{
 			id: "layout.preset.save",
 			title: "現在のlayoutを保存",
 			keywords: "layout workspace preset save",
@@ -2742,6 +2842,13 @@ function App() {
 			shortcut: "Ctrl+,",
 			run: () => setSettingsOpen(true),
 		},
+		...macros().map(macro => ({
+			id: "macro." + macro.name,
+			title: "マクロ: " + macro.name,
+			keywords: "macro automation マクロ 自動化",
+			enabled: !macroRunning() && macro.steps.length > 0,
+			run: () => runMacro(macro),
+		} as AppCommand)),
 		{
 			id: "logs.show",
 			title: "ログを表示",
@@ -2777,6 +2884,25 @@ function App() {
 					</button>
 				</Show>
 			</header>
+			<nav class="command-sidebar" aria-label="コマンドメニュー">
+				<For each={sidebarCommands()}>
+					{id => {
+						const command = () => commands().find(item => item.id === id);
+						return (
+							<Show when={command()}>
+								{item => (
+									<button class="sidebar-command" title={item().title} aria-label={item().title} disabled={item().enabled === false} onClick={() => void invokeCommand(id)}>
+										{commandSymbol(id)}
+									</button>
+								)}
+							</Show>
+						);
+					}}
+				</For>
+				<span class="sidebar-spacer" />
+				<button class="sidebar-command" title="コマンドパレット（Ctrl+Shift+P）" aria-label="コマンドパレット" onClick={() => setCommandPaletteOpen(true)}>⌘</button>
+				<button class="sidebar-command" title="左メニューを編集" aria-label="左メニューを編集" onClick={() => setSettingsOpen(true)}>⚙</button>
+			</nav>
 
 			<Show
 				when={workspace()}
@@ -3191,6 +3317,62 @@ function App() {
 									</For>
 									<Show when={recentWorkspaces().length === 0}><div class="settings-summary">履歴はありません。</div></Show>
 								</div>
+							</section>
+							<section class="settings-section">
+								<h3>マクロ</h3>
+								<div class="settings-summary">既存のコマンドIDを順番に実行します。失敗または無効なコマンドがあれば中断します。任意のスクリプトは実行しません。</div>
+								<button onClick={() => editMacro()}>マクロを追加</button>
+								<div class="layout-preset-list">
+									<For each={macros()}>
+										{macro => (
+											<div class="layout-preset-entry">
+												<span title={macro.steps.join(" → ")}>{macro.name} ({macro.steps.length}手順)</span>
+												<button onClick={() => editMacro(macro)}>編集</button>
+												<button class="danger" onClick={() => {
+													setMacros(current => current.filter(value => value.name !== macro.name));
+													setSidebarCommands(current => current.filter(value => value !== "macro." + macro.name));
+												}}>削除</button>
+											</div>
+										)}
+									</For>
+								</div>
+								<details><summary>利用できるコマンドID</summary><div class="macro-command-list">
+									<For each={commands().filter(command => !command.id.startsWith("macro."))}>
+										{command => <div><code>{command.id}</code> — {command.title}</div>}
+									</For>
+								</div></details>
+							</section>
+							<section class="settings-section">
+								<h3>左メニュー</h3>
+								<div class="settings-summary">コマンドとマクロを追加・並べ替えできます。設定は次回起動時も保持されます。</div>
+								<div class="sidebar-settings-list">
+									<For each={sidebarCommands()}>
+										{(id, index) => <div class="sidebar-settings-entry">
+											<span>{commands().find(command => command.id === id)?.title ?? id}</span>
+											<button disabled={index() === 0} onClick={() => setSidebarCommands(items => {
+												const next = [...items];
+												[next[index() - 1], next[index()]] = [next[index()], next[index() - 1]];
+												return next;
+											})}>↑</button>
+											<button disabled={index() === sidebarCommands().length - 1} onClick={() => setSidebarCommands(items => {
+												const next = [...items];
+												[next[index() + 1], next[index()]] = [next[index()], next[index() + 1]];
+												return next;
+											})}>↓</button>
+											<button onClick={() => setSidebarCommands(items => items.filter((_, at) => at !== index()))}>×</button>
+										</div>}
+									</For>
+								</div>
+								<select value="" onChange={event => {
+									const id = event.currentTarget.value;
+									if(id){ setSidebarCommands(current => current.includes(id) ? current : [...current, id]); }
+									event.currentTarget.value = "";
+								}}>
+									<option value="">追加するコマンドを選択</option>
+									<For each={commands().filter(command => !sidebarCommands().includes(command.id))}>
+										{command => <option value={command.id}>{command.title}</option>}
+									</For>
+								</select>
 							</section>
 							<section class="settings-section">
 								<h3>Layout</h3>
