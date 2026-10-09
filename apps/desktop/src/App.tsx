@@ -1243,6 +1243,7 @@ function App() {
 		explorerMode: explorerMode(),
 		rightPaneMode: rightPaneMode(),
 		dockTree: dockTree(),
+		floatingPanes: Object.keys(floatingPanels()),
 	});
 
 	const saveLayoutPreset = () => {
@@ -1423,6 +1424,7 @@ function App() {
 		dockOrder();
 		dockDirection();
 		dockTree();
+		floatingPanels();
 		dailyNotesDirectory();
 		dailyNoteTemplate();
 		rightPaneMode();
@@ -1623,6 +1625,12 @@ function App() {
 				}
 				setRecoveryTrackingReady(true);
 				setSettingsReady(true);
+				const savedFloatingPanes = (settings.floatingPanes ?? []).filter((kind): kind is FloatingPaneKind =>
+					["explorer", "editor", "preview", "browser", "graph"].includes(kind),
+				);
+				requestAnimationFrame(() => {
+					for(const kind of savedFloatingPanes){ void detachPane(kind); }
+				});
 			})
 			.catch(error => {
 				setRecoveryTrackingReady(true);
