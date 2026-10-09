@@ -1826,54 +1826,81 @@ function App() {
 			.finally(() => requestAnimationFrame(() => { suppressEditorViewport = false; }));
 	};
 
-	const workspaceGridTemplate = () => {
-		if(explorerVisible() && !floatingPanels().explorer && rightPaneVisible()){
-			return explorerWidth() + "px 4px minmax(280px, " + editorRatio() + "fr) 4px minmax(280px, " + (1 - editorRatio()) + "fr)";
-		}
-		if(explorerVisible() && !floatingPanels().explorer){
-			return explorerWidth() + "px 4px minmax(0, 1fr)";
-		}
-		if(rightPaneVisible()){
-			return "minmax(0, 1fr) 4px minmax(280px, 0.8fr)";
-		}
-		return "minmax(0, 1fr)";
+	const visibleDockPanels = () => dockOrder().filter(panel => panel !== "explorer" || (explorerVisible() && !floatingPanels().explorer)).filter(panel => panel !== "right" || rightPaneVisible());
+	const dockIndex = (panel: DockPanel) => visibleDockPanels().indexOf(panel);
+	const dockTracks = () => {
+		const both = visibleDockPanels().includes("editor") && visibleDockPanels().includes("right");
+		return visibleDockPanels().map(panel => {
+			if(panel === "explorer"){ return explorerWidth() + "px"; }
+			if(!both){ return "minmax(0, 1fr)"; }
+			return "minmax(0, " + (panel === "editor" ? editorRatio() : 1 - editorRatio()) + "fr)";
+		}).join(" 4px ");
 	};
-
-	const beginExplorerResize = (event: PointerEvent) => {
+	const beginDockResize = (event: PointerEvent, index: number) => {
 		event.preventDefault();
-		const startX = event.clientX;
-		const startWidth = explorerWidth();
-		const handleMove = (moveEvent: PointerEvent) => {
-			const next = Math.max(180, Math.min(420, startWidth + moveEvent.clientX - startX));
-			setExplorerWidth(next);
+		const panels = visibleDockPanels();
+		if(index + 1 >= panels.length){ return; }
+		const before = panels[index], after = panels[index + 1];
+		const first = workspaceElement.querySelector<HTMLElement>('[data-dock-panel="' + before + '"]');
+		const second = workspaceElement.querySelector<HTMLElement>('[data-dock-panel="' + after + '"]');
+		if(!first || !second){ return; }
+		const column = dockDirection() === "column";
+		const start = column ? event.clientY : event.clientX;
+		const firstSize = column ? first.getBoundingClientRect().height : first.getBoundingClientRect().width;
+		const secondSize = column ? second.getBoundingClientRect().height : second.getBoundingClientRect().width;
+		const startExplorer = explorerWidth(), initialRatio = editorRatio();
+		const move = (next: PointerEvent) => {
+			const delta = (column ? next.clientY : next.clientX) - start;
+			if(before === "explorer" || after === "explorer"){
+				setExplorerWidth(Math.max(180, Math.min(420, startExplorer + delta * (before === "explorer" ? 1 : -1))));
+				return;
+			}
+			setEditorRatio(Math.max(0.15, Math.min(0.85, initialRatio + delta * (before === "editor" ? 1 : -1) / Math.max(1, firstSize + secondSize))));
 		};
-		const handleUp = () => {
-			window.removeEventListener("pointermove", handleMove);
-			window.removeEventListener("pointerup", handleUp);
+		const stop = () => {
+			window.removeEventListener("pointermove", move);
+			window.removeEventListener("pointerup", stop);
 			scheduleSettingsSave();
 		};
-		window.addEventListener("pointermove", handleMove);
-		window.addEventListener("pointerup", handleUp, { once: true });
+		window.addEventListener("pointermove", move);
+		window.addEventListener("pointerup", stop, { once: true });
 	};
-
-	const beginEditorPreviewResize = (event: PointerEvent) => {
+	const startDockMove = (event: PointerEvent, source: DockPanel) => {
+		if(event.button !== 0){ return; }
 		event.preventDefault();
-		const rect = workspaceElement.getBoundingClientRect();
-		const explorer = explorerWidth();
-		const splitters = 8;
-		const remaining = Math.max(560, rect.width - explorer - splitters);
-		const handleMove = (moveEvent: PointerEvent) => {
-			const editorWidth = moveEvent.clientX - rect.left - explorer - 4;
-			const ratio = editorWidth / remaining;
-			setEditorRatio(Math.max(0.25, Math.min(0.75, ratio)));
+		const handle = event.currentTarget as HTMLElement;
+		handle.setPointerCapture(event.pointerId);
+		const startX = event.clientX, startY = event.clientY;
+		const move = (next: PointerEvent) => {
+			if(Math.hypot(next.clientX - startX, next.clientY - startY) > 8){ setDraggingDock(source); }
 		};
-		const handleUp = () => {
-			window.removeEventListener("pointermove", handleMove);
-			window.removeEventListener("pointerup", handleUp);
-			scheduleSettingsSave();
+		const cleanup = () => {
+			handle.removeEventListener("pointermove", move);
+			handle.removeEventListener("pointerup", finish);
+			handle.removeEventListener("pointercancel", cancel);
+			if(handle.hasPointerCapture(event.pointerId)){ handle.releasePointerCapture(event.pointerId); }
+			setDraggingDock(null);
 		};
-		window.addEventListener("pointermove", handleMove);
-		window.addEventListener("pointerup", handleUp, { once: true });
+		const cancel = () => cleanup();
+		const finish = (next: PointerEvent) => {
+			if(Math.hypot(next.clientX - startX, next.clientY - startY) <= 8){ cleanup(); return; }
+			const target = window.document.elementFromPoint(next.clientX, next.clientY)?.closest<HTMLElement>("[data-dock-panel]");
+			const destination = target?.dataset.dockPanel as DockPanel | undefined;
+			cleanup();
+			if(!destination || destination === source || !dockOrder().includes(destination)){ return; }
+			const bounds = target!.getBoundingClientRect();
+			const horizontal = (next.clientX - bounds.left) / Math.max(1, bounds.width);
+			const vertical = (next.clientY - bounds.top) / Math.max(1, bounds.height);
+			const column = vertical < 0.25 || vertical > 0.75;
+			const before = column ? vertical < 0.5 : horizontal < 0.5;
+			const order = dockOrder().filter(panel => panel !== source);
+			order.splice(order.indexOf(destination) + (before ? 0 : 1), 0, source);
+			setDockDirection(column ? "column" : "row");
+			setDockOrder(order);
+		};
+		handle.addEventListener("pointermove", move);
+		handle.addEventListener("pointerup", finish);
+		handle.addEventListener("pointercancel", cancel);
 	};
 
 	const chooseWorkspace = async (requestedPath?: string) => {
