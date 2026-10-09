@@ -115,6 +115,8 @@ export type DesktopSettings = {
 	layoutPresets: LayoutPreset[];
 	macros: MacroDefinition[];
 	sidebarCommands: string[];
+	dockOrder: string[];
+	dockDirection: string;
 	dailyNotesDirectory: string;
 	dailyNoteTemplate: string;
 	lastRightPane: string;
