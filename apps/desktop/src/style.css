@@ -1763,3 +1763,37 @@ button.primary {
 	font-size: 12px;
 	color: #aaa;
 }
+
+/* HTML5 D&Dは使わず、ポインターで移動することで画像ドロップを維持する。 */
+.dock-grip {
+	display: inline-flex;
+	flex: 0 0 17px;
+	align-items: center;
+	justify-content: center;
+	align-self: stretch;
+	cursor: grab;
+	user-select: none;
+	touch-action: none;
+	color: #777;
+	font-size: 17px;
+}
+.dock-grip:hover { color: #eee; }
+.workspace.dock-dragging .dock-grip { cursor: grabbing; }
+.workspace.dock-dragging [data-dock-panel] {
+	outline: 1px dashed #4d6482;
+	outline-offset: -2px;
+}
+.workspace.dock-column { grid-auto-flow: row; }
+.workspace.dock-column .pane-splitter {
+	min-width: 0;
+	height: 4px;
+	min-height: 4px;
+	cursor: row-resize;
+}
+.workspace.dock-column .pane-splitter::after { inset: -2px 0; }
+.workspace.dock-column .explorer,
+.workspace.dock-column .editor-pane,
+.workspace.dock-column .preview-pane {
+	border-right: 0;
+	border-bottom: 1px solid #333;
+}
