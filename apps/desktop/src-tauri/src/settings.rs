@@ -4,6 +4,27 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum DockNode {
+	Pane { id: String },
+	Split { axis: String, ratio: f64, first: Box<DockNode>, second: Box<DockNode> },
+}
+
+fn default_dock_tree() -> DockNode {
+	DockNode::Split {
+		axis: "row".into(),
+		ratio: 0.23,
+		first: Box::new(DockNode::Pane { id: "explorer".into() }),
+		second: Box::new(DockNode::Split {
+			axis: "row".into(),
+			ratio: 0.5,
+			first: Box::new(DockNode::Pane { id: "editor".into() }),
+			second: Box::new(DockNode::Pane { id: "right".into() }),
+		}),
+	}
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LayoutPreset {
 	pub name: String,
@@ -13,6 +34,8 @@ pub struct LayoutPreset {
 	pub right_pane_visible: bool,
 	pub explorer_mode: String,
 	pub right_pane_mode: String,
+	#[serde(default)]
+	pub dock_tree: Option<DockNode>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -44,6 +67,7 @@ pub struct DesktopSettings {
 	pub sidebar_commands: Vec<String>,
 	pub dock_order: Vec<String>,
 	pub dock_direction: String,
+	pub dock_tree: DockNode,
 	pub daily_notes_directory: String,
 	pub daily_note_template: String,
 	pub last_right_pane: String,
@@ -71,6 +95,7 @@ impl Default for DesktopSettings {
 			macros: Vec::new(),
 			dock_order: vec!["explorer".into(), "editor".into(), "right".into()],
 			dock_direction: "row".into(),
+			dock_tree: default_dock_tree(),
 			sidebar_commands: vec![
 				"workspace.quickOpen".into(),
 				"document.daily.open".into(),
