@@ -29,7 +29,7 @@ Windows CIでは `quire-core` の自動テスト、Tauri production build、pack
 - 画面左のコマンドレールは、**Settings → 左メニュー**で割り当て・並べ替え可能。コマンドとマクロを配置できます。
 - **Ctrl+Shift+P**でCommand Paletteを開けます。
 - **Settings → マクロ**でマクロ名と実行順のコマンドIDを登録できます。最大100ステップの逐次実行で、無効なコマンドや例外があれば停止します。任意コード実行や再帰マクロはできません。
-- Explorer / Editor / 右ペイン見出しの **⠿** をドラッグして配置を変更できます。上下・左右のドッキングと配置保存に対応します。
+- Explorer / Editor / 右ペイン見出しの **⠿** をドラッグして配置を変更できます。上下・左右を混在させる再帰分割ツリーと配置保存に対応します。
 - Explorer / Editor / Preview / Graph / Browserは **↗** またはコマンドから別ウィンドウに分離し、分離先の「メインへ戻す」でドッキングできます。
 
 **未完了:** Obsidian相当の任意の多段分割、右ペイン各タブの独立ドック、History/Settings/Logsの統合、全UI操作のコマンド経由への統一、分離Editorの実機Recovery検証。
