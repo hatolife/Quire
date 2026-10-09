@@ -828,6 +828,7 @@ function App() {
 	let documentAutoSaveTimer: number | undefined;
 	let recoveryTimer: number | undefined;
 	let dockMountFrame: number | undefined;
+	let approvedMainClose = false;
 	let watchGeneration = 0;
 	let searchReindexPending = false;
 	let pendingWatchChanges: Array<{ change: "create" | "modify" | "remove" | "other"; paths: string[] }> = [];
@@ -1723,6 +1724,19 @@ function App() {
 		});
 
 		void getCurrentWindow().onCloseRequested(event => {
+			if(approvedMainClose){ return; }
+			if(floatingPanels().editor){
+				event.preventDefault();
+				if(!saving()){
+					void saveDocument(true).then(saved => {
+						if(saved){
+							approvedMainClose = true;
+							void getCurrentWindow().close();
+						}
+					});
+				}
+				return;
+			}
 			if(!dirty()){ return; }
 			if(!window.confirm("未保存の変更があります。終了しますか？未保存bufferは次回起動時の復元候補として保持されます。")){
 				event.preventDefault();
