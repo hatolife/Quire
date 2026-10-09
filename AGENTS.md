@@ -8,18 +8,21 @@ Quireは、文書編集、検索、リンク、履歴、Web参照等を一つの
 
 ## Current phase
 
-現在は Milestone 2: Application Skeleton の本体実装段階。
+Milestone 2は完了済み。Milestone 3の主要機能は実装済みだが、実運用検証は未完了。
+Milestone 4のDaily Use Alphaへ向け、構造・安全性・操作性を改修中。
 
-Architecture Spikesで検証した方式を、`crates/quire-core` と `apps/desktop` の本体構成へ移植している。
+2026-10-09に追加された、実運用検証前に満たす必須条件:
 
-現在の優先事項:
+- Windows GUIとしてコンソールを表示しない。
+- ペインをObsidianのように任意に分割、移動、ドッキングできる。単なる3領域の順序変更では完成ではない。
+- Editor、Explorer、Preview、Browser、Graph等を別ウィンドウ化し、未保存変更とRecoveryを保護する。
+- 全UI機能を安定したコマンドとして登録し、コマンド、ショートカット、メニューから同じ操作を呼べる。
+- マクロによるコマンドの自動化を実装する。
+- 左メニューに任意のコマンドやマクロを割り当てられる。
+- 関連設定を永続化し、起動後に復元できる。
 
-- Neovim Editor Adapterを本体へ統合する。
-- Workspace / Documentの通常ファイル正本を維持する。
-- Preview、pane layout、settings、logging等のApplication Skeletonを成立させる。
-- Spike特有の近道をそのまま本体へ持ち込まない。
-
-Spikeは新たな高リスク技術を検証する場合、または既存方式を再検証する場合に使用する。
+進捗と未完了条件は `docs/initial-concept/milestones.md` を参照する。
+実機の代わりにできるテスト・CI・静的確認を先に実施し、未検証事項を完了扱いしない。
 
 ## Development rules
 
