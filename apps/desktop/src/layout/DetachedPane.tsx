@@ -3,9 +3,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import BrowserPane from "../browser/BrowserPane";
 import GraphPane from "../graph/GraphPane";
+import NeovimEditor from "../editor/NeovimEditor";
 import { assetRead, workspaceList, type LinkGraph, type WorkspaceEntry } from "../ipc";
 
-export type FloatingPaneKind = "explorer" | "preview" | "graph" | "browser";
+export type FloatingPaneKind = "explorer" | "editor" | "preview" | "graph" | "browser";
 export type FloatingPaneState = {
 	workspaceName: string | null;
 	documentPath: string | null;
@@ -50,10 +51,7 @@ export default function DetachedPane() {
 	const send = (event: string, payload: unknown) => {
 		void emitTo("main", event, payload).catch(error => setMessage(String(error)));
 	};
-	const dock = async () => {
-		send("quire:pane-dock", { kind, label: windowLabel });
-		await getCurrentWindow().close();
-	};
+	const dock = () => { send("quire:pane-dock", { kind, label: windowLabel }); };
 	createEffect(() => {
 		const current = state();
 		if(kind !== "preview" || !current?.documentPath){ return; }
@@ -83,7 +81,7 @@ export default function DetachedPane() {
 	return (
 		<div class="floating-pane-app">
 			<header class="floating-pane-toolbar">
-				<strong>{kind === "explorer" ? "Explorer" : kind === "preview" ? "Preview" : kind === "graph" ? "Graph" : "Browser"}</strong>
+				<strong>{kind === "explorer" ? "Explorer" : kind === "editor" ? "Editor" : kind === "preview" ? "Preview" : kind === "graph" ? "Graph" : "Browser"}</strong>
 				<span class="toolbar-spacer" />
 				<button onClick={() => void dock()}>メインへ戻す</button>
 			</header>
@@ -92,6 +90,19 @@ export default function DetachedPane() {
 					<For each={state()?.entries ?? []}>
 						{entry => <FloatingExplorerEntry entry={entry} open={path => send("quire:pane-open-document", path)} />}
 					</For>
+				</div>
+			</Show>
+			<Show when={kind === "editor"}>
+				<div class="floating-pane-content floating-editor">
+					<Show when={state()?.documentPath} keyed fallback={<div class="empty-pane">Documentを開いてください。</div>}>
+						{path => <NeovimEditor
+							relativePath={path}
+							onTextChange={content => send("quire:pane-editor-change", { path, content })}
+							onViewportLineChange={line => send("quire:pane-editor-scroll", line)}
+							onStatus={setMessage}
+							onSave={() => send("quire:pane-editor-save", path)}
+						/>}
+					</Show>
 				</div>
 			</Show>
 			<Show when={kind === "preview"}>
