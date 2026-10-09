@@ -68,6 +68,7 @@ pub struct DesktopSettings {
 	pub dock_order: Vec<String>,
 	pub dock_direction: String,
 	pub dock_tree: DockNode,
+	pub floating_panes: Vec<String>,
 	pub daily_notes_directory: String,
 	pub daily_note_template: String,
 	pub last_right_pane: String,
@@ -96,6 +97,7 @@ impl Default for DesktopSettings {
 			dock_order: vec!["explorer".into(), "editor".into(), "right".into()],
 			dock_direction: "row".into(),
 			dock_tree: default_dock_tree(),
+			floating_panes: Vec::new(),
 			sidebar_commands: vec![
 				"workspace.quickOpen".into(),
 				"document.daily.open".into(),
