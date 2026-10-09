@@ -1812,10 +1812,10 @@ function App() {
 	};
 
 	const workspaceGridTemplate = () => {
-		if(explorerVisible() && rightPaneVisible()){
+		if(explorerVisible() && !floatingPanels().explorer && rightPaneVisible()){
 			return explorerWidth() + "px 4px minmax(280px, " + editorRatio() + "fr) 4px minmax(280px, " + (1 - editorRatio()) + "fr)";
 		}
-		if(explorerVisible()){
+		if(explorerVisible() && !floatingPanels().explorer){
 			return explorerWidth() + "px 4px minmax(0, 1fr)";
 		}
 		if(rightPaneVisible()){
@@ -3011,12 +3011,13 @@ function App() {
 					class="workspace"
 					style={"grid-template-columns: " + workspaceGridTemplate()}
 				>
-					<aside class="explorer" classList={{ hidden: !explorerVisible() }}>
+					<aside class="explorer" classList={{ hidden: !explorerVisible() || Boolean(floatingPanels().explorer) }}>
 						<div class="pane-title explorer-title">
 							<button class="explorer-mode" classList={{ active: explorerMode() === "files" }} onClick={() => setExplorerMode("files")}>Files</button>
 							<button class="explorer-mode" classList={{ active: explorerMode() === "tags" }} onClick={() => setExplorerMode("tags")}>Tags</button>
 							<button class="explorer-mode" classList={{ active: explorerMode() === "outline" }} onClick={() => setExplorerMode("outline")}>Outline</button>
 							<span class="toolbar-spacer" />
+							<button class="pane-action" title="Explorerを別ウィンドウに分離" onClick={() => detachPane("explorer")}>↗</button>
 							<button class="pane-action" title="新規Markdown" onClick={() => void createDocument()}>＋</button>
 							<button class="pane-action" title="新規folder" onClick={() => void createFolder()}>F＋</button>
 							<button class="pane-action" title="Templateから新規" onClick={() => void openTemplatePicker()}>T＋</button>
@@ -3119,7 +3120,7 @@ function App() {
 					</aside>
 					<div
 						class="pane-splitter explorer-splitter"
-						classList={{ hidden: !explorerVisible() }}
+						classList={{ hidden: !explorerVisible() || Boolean(floatingPanels().explorer) }}
 						role="separator"
 						aria-orientation="vertical"
 						onPointerDown={event => beginExplorerResize(event as PointerEvent)}
@@ -3206,6 +3207,8 @@ function App() {
 							>
 								Graph
 							</button>
+							<span class="toolbar-spacer" />
+							<button class="pane-action" title="現在のペインを別ウィンドウに分離" onClick={() => detachPane(rightPaneMode())}>↗</button>
 						</div>
 						<div class="right-pane-content">
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "preview" }}>
@@ -3236,19 +3239,19 @@ function App() {
 								</Show>
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "graph" }}>
-								<GraphPane
+								<Show when={!floatingPanels().graph}><GraphPane
 									graph={linkGraph()}
 									currentPath={document()?.relativePath}
 									onOpen={path => openDocument(path)}
-								/>
+								/></Show>
 							</div>
 							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
-								<BrowserPane
+								<Show when={!floatingPanels().browser}><BrowserPane
 									active={rightPaneVisible() && rightPaneMode() === "browser" && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !templatePickerOpen() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
 									navigateTo={browserTargetUrl()}
 									onUrlChange={url => setBrowserTargetUrl(url)}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
-								/>
+								/></Show>
 							</div>
 						</div>
 					</section>
