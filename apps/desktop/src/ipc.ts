@@ -120,6 +120,7 @@ export type DesktopSettings = {
 	dockOrder: string[];
 	dockDirection: string;
 	dockTree: DockNode;
+	floatingPanes: string[];
 	dailyNotesDirectory: string;
 	dailyNoteTemplate: string;
 	lastRightPane: string;
