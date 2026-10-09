@@ -6,7 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import type { FloatingPaneKind, FloatingPaneState } from "./layout/DetachedPane";
-import { defaultDockTree, moveDockPanel, normalizeDockTree, updateDockSplit, type DockNode, type DockEdge } from "./layout/dock-tree";
+import { defaultDockTree, moveDockPanel, normalizeDockTree, setDockAxis, updateDockSplit, type DockNode, type DockEdge } from "./layout/dock-tree";
 import { mountDockTree } from "./layout/mount-dock-tree";
 import BrowserPane from "./browser/BrowserPane";
 import GraphPane from "./graph/GraphPane";
@@ -2960,17 +2960,17 @@ function App() {
 		{
 			id: "layout.dock.reset",
 			title: "Dock配置を初期化",
-			run: () => { setDockOrder(["explorer", "editor", "right"]); setDockDirection("row"); },
+			run: () => { setDockOrder(["explorer", "editor", "right"]); setDockDirection("row"); setDockTree(defaultDockTree()); },
 		},
 		{
 			id: "layout.dock.vertical",
 			title: "Dockを縦方向に並べる",
-			run: () => setDockDirection("column"),
+			run: () => { setDockDirection("column"); setDockTree(root => setDockAxis(root, "column")); },
 		},
 		{
 			id: "layout.dock.horizontal",
 			title: "Dockを横方向に並べる",
-			run: () => setDockDirection("row"),
+			run: () => { setDockDirection("row"); setDockTree(root => setDockAxis(root, "row")); },
 		},
 		{
 			id: "layout.reset",
@@ -3589,9 +3589,9 @@ function App() {
 							<section class="settings-section">
 								<h3>Layout</h3>
 								<div class="layout-preset-actions">
-									<button classList={{ active: dockDirection() === "row" }} onClick={() => setDockDirection("row")}>左右に並べる</button>
-									<button classList={{ active: dockDirection() === "column" }} onClick={() => setDockDirection("column")}>上下に並べる</button>
-									<button onClick={() => { setDockOrder(["explorer", "editor", "right"]); setDockDirection("row"); }}>Dockを初期化</button>
+									<button classList={{ active: dockDirection() === "row" }} onClick={() => { setDockDirection("row"); setDockTree(root => setDockAxis(root, "row")); }}>左右に並べる</button>
+									<button classList={{ active: dockDirection() === "column" }} onClick={() => { setDockDirection("column"); setDockTree(root => setDockAxis(root, "column")); }}>上下に並べる</button>
+									<button onClick={() => { setDockOrder(["explorer", "editor", "right"]); setDockDirection("row"); setDockTree(defaultDockTree()); }}>Dockを初期化</button>
 								</div>
 								<div class="settings-summary">ペイン見出しの⠿をドラッグすると配置を変更できます。領域上端・下端は上下、左右中央は横方向にドッキングします。</div>
 								<label class="settings-toggle">
