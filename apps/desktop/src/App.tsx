@@ -3022,6 +3022,37 @@ function App() {
 			enabled: workspace() !== null && !historyBusy(),
 			run: () => createHistorySnapshot(),
 		},
+		...(["files", "tags", "outline"] as const).map(mode => ({
+			id: "explorer.mode." + mode,
+			title: mode === "files" ? "Explorer: Files" : mode === "tags" ? "Explorer: Tags" : "Explorer: Outline",
+			keywords: "explorer files tags outline",
+			enabled: workspace() !== null,
+			run: () => { setExplorerMode(mode); setExplorerVisible(true); },
+		} as AppCommand)),
+		{
+			id: "workspace.search.clear",
+			title: "Workspace検索をクリア",
+			enabled: workspace() !== null,
+			run: () => setSearchQuery(""),
+		},
+		{
+			id: "tabs.current.close",
+			title: "現在のDocumentタブを閉じる",
+			enabled: document() !== null,
+			run: () => document() && closeDocumentTab(document()!.relativePath),
+		},
+		{
+			id: "recovery.apply",
+			title: "未保存bufferを復元",
+			enabled: Boolean(recoveryDraft() && document()),
+			run: () => applyRecoveryDraft(),
+		},
+		{
+			id: "recovery.discard",
+			title: "未保存bufferの復元候補を破棄",
+			enabled: recoveryDraft() !== null,
+			run: () => discardRecoveryDraft(),
+		},
 		{
 			id: "history.toggle",
 			title: historyOpen() ? "履歴を閉じる" : "履歴を開く",
@@ -3037,6 +3068,24 @@ function App() {
 				setHistoryOpen(true);
 				void refreshHistory();
 			},
+		},
+		{
+			id: "history.refresh",
+			title: "Historyを更新",
+			enabled: workspace() !== null && !historyBusy(),
+			run: () => refreshHistory(),
+		},
+		{
+			id: "history.prune",
+			title: "Snapshotの保持上限を適用",
+			enabled: workspace() !== null && !historyBusy(),
+			run: () => pruneHistoryNow(),
+		},
+		{
+			id: "history.close",
+			title: "Historyを閉じる",
+			enabled: historyOpen(),
+			run: () => setHistoryOpen(false),
 		},
 		{
 			id: "layout.dock.reset",
@@ -3115,6 +3164,23 @@ function App() {
 			keywords: "web browser pane",
 			run: () => showSecondaryPane("browser"),
 		},
+		...(["preview", "browser", "graph"] as SecondaryPanel[]).map(kind => ({
+			id: "pane." + kind + ".close",
+			title: kind + " paneを閉じる",
+			enabled: paneVisibility().includes(kind),
+			run: () => hideSecondaryPane(kind),
+		} as AppCommand)),
+		{
+			id: "settings.close",
+			title: "設定を閉じる",
+			enabled: settingsOpen(),
+			run: () => setSettingsOpen(false),
+		},
+		{
+			id: "macro.create",
+			title: "新しいマクロを定義",
+			run: () => { setSettingsOpen(true); editMacro(); },
+		},
 		{
 			id: "settings.show",
 			title: "設定を開く",
@@ -3129,6 +3195,27 @@ function App() {
 			enabled: !macroRunning() && macro.steps.length > 0,
 			run: () => runMacro(macro),
 		} as AppCommand)),
+		{
+			id: "logs.refresh",
+			title: "ログ表示を更新",
+			run: () => refreshLogs(),
+		},
+		{
+			id: "logs.clear",
+			title: "ログ表示をクリア",
+			run: () => clearLogs(),
+		},
+		{
+			id: "logs.file.copy",
+			title: "永続ログファイルのパスをコピー",
+			run: () => copyLogFilePath(),
+		},
+		{
+			id: "logs.close",
+			title: "ログを閉じる",
+			enabled: logOpen(),
+			run: () => setLogOpen(false),
+		},
 		{
 			id: "logs.show",
 			title: "ログを表示",
