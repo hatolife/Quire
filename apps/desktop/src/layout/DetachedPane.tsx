@@ -9,6 +9,7 @@ import { assetRead, workspaceList, type LinkGraph, type WorkspaceEntry } from ".
 export type FloatingPaneKind = "explorer" | "editor" | "preview" | "graph" | "browser";
 export type FloatingPaneState = {
 	workspaceName: string | null;
+	workspaceRoot: string | null;
 	documentPath: string | null;
 	previewHtml: string;
 	graph: LinkGraph | null;
@@ -45,6 +46,12 @@ export default function DetachedPane() {
 	const windowLabel = getCurrentWindow().label;
 	const [state, setState] = createSignal<FloatingPaneState | null>(null);
 	const [message, setMessage] = createSignal("");
+	const editorKey = () => {
+		const current = state();
+		return current?.workspaceRoot && current.documentPath
+			? current.workspaceRoot + "\n" + current.documentPath
+			: null;
+	};
 	let previewElement!: HTMLDivElement;
 	let active = true;
 	const unlisteners: Array<() => void> = [];
@@ -123,14 +130,17 @@ export default function DetachedPane() {
 			</Show>
 			<Show when={kind === "editor"}>
 				<div class="floating-pane-content floating-editor">
-					<Show when={state()?.documentPath} keyed fallback={<div class="empty-pane">Documentを開いてください。</div>}>
-						{path => <NeovimEditor
-							relativePath={path}
-							onTextChange={content => send("quire:pane-editor-change", { path, content })}
-							onViewportLineChange={line => send("quire:pane-editor-scroll", line)}
-							onStatus={setMessage}
-							onSave={() => send("quire:pane-editor-save", path)}
-						/>}
+					<Show when={editorKey()} keyed fallback={<div class="empty-pane">Documentを開いてください。</div>}>
+						{key => {
+							const [workspaceRoot, path] = key.split("\n");
+							return <NeovimEditor
+								relativePath={path}
+								onTextChange={content => send("quire:pane-editor-change", { workspaceRoot, path, content })}
+								onViewportLineChange={line => send("quire:pane-editor-scroll", line)}
+								onStatus={setMessage}
+								onSave={() => send("quire:pane-editor-save", { workspaceRoot, path })}
+							/>;
+						}}
 					</Show>
 				</div>
 			</Show>
