@@ -6,7 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import type { FloatingPaneKind, FloatingPaneState } from "./layout/DetachedPane";
-import { defaultDockTree, moveDockPanel, normalizeDockTree, setDockAxis, updateDockSplit, type DockNode, type DockEdge } from "./layout/dock-tree";
+import { defaultDockTree, moveDockPanel, normalizeDockTree, setDockAxis, updateDockSplit, type DockNode, type DockEdge, type DockPanelId } from "./layout/dock-tree";
 import { mountDockTree } from "./layout/mount-dock-tree";
 import BrowserPane from "./browser/BrowserPane";
 import GraphPane from "./graph/GraphPane";
@@ -811,6 +811,7 @@ function linkFragment(value: string): string | undefined {
 }
 
 type DockPanel = "explorer" | "editor" | "right";
+type SecondaryPanel = "preview" | "browser" | "graph";
 
 function App() {
 	let workspaceElement!: HTMLDivElement;
@@ -893,7 +894,8 @@ function App() {
 	const [dailyNoteTemplate, setDailyNoteTemplate] = createSignal("Templates/Daily.md");
 	const [templatePickerOpen, setTemplatePickerOpen] = createSignal(false);
 	const [templates, setTemplates] = createSignal<string[]>([]);
-	const [rightPaneMode, setRightPaneMode] = createSignal<"preview" | "browser" | "graph">("preview");
+	const [rightPaneMode, setRightPaneMode] = createSignal<SecondaryPanel>("preview");
+	const [paneVisibility, setPaneVisibility] = createSignal<SecondaryPanel[]>(["preview"]);
 	const [linkGraph, setLinkGraph] = createSignal<LinkGraph | null>(null);
 	const [browserTargetUrl, setBrowserTargetUrl] = createSignal<string | undefined>();
 	const [commandPaletteOpen, setCommandPaletteOpen] = createSignal(false);
@@ -1244,6 +1246,7 @@ function App() {
 		explorerMode: explorerMode(),
 		rightPaneMode: rightPaneMode(),
 		dockTree: dockTree(),
+		paneVisibility: paneVisibility(),
 	});
 
 	const saveLayoutPreset = () => {
@@ -1272,6 +1275,7 @@ function App() {
 		setExplorerMode(preset.explorerMode === "tags" ? "tags" : preset.explorerMode === "outline" ? "outline" : "files");
 		setRightPaneMode(preset.rightPaneMode === "browser" ? "browser" : preset.rightPaneMode === "graph" ? "graph" : "preview");
 		if(preset.dockTree){ setDockTree(normalizeDockTree(preset.dockTree)); }
+		if(preset.paneVisibility){ setPaneVisibility(preset.paneVisibility.filter((kind): kind is SecondaryPanel => ["preview", "browser", "graph"].includes(kind))); }
 		updateStatus("layoutを復元しました: " + preset.name, "info", "layout");
 	};
 
@@ -1288,6 +1292,7 @@ function App() {
 		setEditorRatio(0.5);
 		setExplorerVisible(true);
 		setRightPaneVisible(true);
+		setPaneVisibility(["preview"]);
 		scheduleSettingsSave();
 	};
 
@@ -1424,6 +1429,7 @@ function App() {
 		dockOrder();
 		dockDirection();
 		dockTree();
+		paneVisibility();
 		floatingPanels();
 		dailyNotesDirectory();
 		dailyNoteTemplate();
@@ -1525,6 +1531,7 @@ function App() {
 		dockOrder: dockOrder(),
 		dockDirection: dockDirection(),
 		dockTree: dockTree(),
+		paneVisibility: paneVisibility(),
 		floatingPanes: Object.keys(floatingPanels()),
 		dailyNotesDirectory: dailyNotesDirectory(),
 		dailyNoteTemplate: dailyNoteTemplate(),
@@ -1572,6 +1579,7 @@ function App() {
 				});
 				setDockDirection(settings.dockDirection === "column" ? "column" : "row");
 				setDockTree(normalizeDockTree(settings.dockTree));
+				setPaneVisibility((settings.paneVisibility ?? [settings.lastRightPane || "preview"]).filter((kind): kind is SecondaryPanel => ["preview", "browser", "graph"].includes(kind)));
 				setMacros(settings.macros ?? []);
 				setSidebarCommands(settings.sidebarCommands ?? ["workspace.quickOpen", "document.daily.open", "pane.preview", "pane.browser", "pane.graph", "history.show"]);
 				setDailyNotesDirectory(settings.dailyNotesDirectory?.trim() || "Daily");
