@@ -3301,9 +3301,9 @@ function App() {
 					<aside data-dock-panel="explorer" style={{ order: String(dockIndex("explorer") * 2) }} class="explorer" classList={{ hidden: !explorerVisible() || Boolean(floatingPanels().explorer) }}>
 						<div class="pane-title explorer-title">
 							<span class="dock-grip" title="ドラッグでドッキング位置を変更" onPointerDown={event => startDockMove(event as PointerEvent, "explorer")}>⠿</span>
-							<button class="explorer-mode" classList={{ active: explorerMode() === "files" }} onClick={() => setExplorerMode("files")}>Files</button>
-							<button class="explorer-mode" classList={{ active: explorerMode() === "tags" }} onClick={() => setExplorerMode("tags")}>Tags</button>
-							<button class="explorer-mode" classList={{ active: explorerMode() === "outline" }} onClick={() => setExplorerMode("outline")}>Outline</button>
+							<button class="explorer-mode" classList={{ active: explorerMode() === "files" }} onClick={() => void invokeCommand("explorer.mode.files")}>Files</button>
+							<button class="explorer-mode" classList={{ active: explorerMode() === "tags" }} onClick={() => void invokeCommand("explorer.mode.tags")}>Tags</button>
+							<button class="explorer-mode" classList={{ active: explorerMode() === "outline" }} onClick={() => void invokeCommand("explorer.mode.outline")}>Outline</button>
 							<span class="toolbar-spacer" />
 							<button class="pane-action" title="Explorerを別ウィンドウに分離" onClick={() => detachPane("explorer")}>↗</button>
 							<button class="pane-action" title="新規Markdown" onClick={() => void invokeCommand("document.create")}>＋</button>
@@ -3483,7 +3483,7 @@ function App() {
 							<strong>Preview</strong>
 							<span class="toolbar-spacer" />
 							<button class="pane-action" title="別ウィンドウへ分離" onClick={() => void detachPane("preview")}>↗</button>
-							<button class="pane-action" title="Previewを閉じる" onClick={() => hideSecondaryPane("preview")}>×</button>
+							<button class="pane-action" title="Previewを閉じる" onClick={() => void invokeCommand("pane.preview.close")}>×</button>
 						</div>
 						<div class="right-pane-content">
 							<div class="right-pane-layer">
@@ -3521,7 +3521,7 @@ function App() {
 							<strong>Browser</strong>
 							<span class="toolbar-spacer" />
 							<button class="pane-action" title="別ウィンドウへ分離" onClick={() => void detachPane("browser")}>↗</button>
-							<button class="pane-action" title="Browserを閉じる" onClick={() => hideSecondaryPane("browser")}>×</button>
+							<button class="pane-action" title="Browserを閉じる" onClick={() => void invokeCommand("pane.browser.close")}>×</button>
 						</div>
 						<div class="right-pane-content">
 							<div class="right-pane-layer">
@@ -3540,7 +3540,7 @@ function App() {
 							<strong>Graph</strong>
 							<span class="toolbar-spacer" />
 							<button class="pane-action" title="別ウィンドウへ分離" onClick={() => void detachPane("graph")}>↗</button>
-							<button class="pane-action" title="Graphを閉じる" onClick={() => hideSecondaryPane("graph")}>×</button>
+							<button class="pane-action" title="Graphを閉じる" onClick={() => void invokeCommand("pane.graph.close")}>×</button>
 						</div>
 						<div class="right-pane-content">
 							<div class="right-pane-layer">
@@ -3575,8 +3575,8 @@ function App() {
 							</Show>
 							<div class="recovery-preview">{recovery().content.slice(0, 600)}{recovery().content.length > 600 ? "…" : ""}</div>
 							<div class="recovery-actions">
-								<button onClick={() => void discardRecoveryDraft()}>破棄</button>
-								<button class="primary" onClick={() => void applyRecoveryDraft()}>bufferを復元</button>
+								<button onClick={() => void invokeCommand("recovery.discard")}>破棄</button>
+								<button class="primary" onClick={() => void invokeCommand("recovery.apply")}>bufferを復元</button>
 							</div>
 						</div>
 					</div>
@@ -3591,7 +3591,7 @@ function App() {
 						<div class="settings-header">
 							<strong>Settings</strong>
 							<span class="toolbar-spacer" />
-							<button onClick={() => setSettingsOpen(false)}>閉じる</button>
+							<button onClick={() => void invokeCommand("settings.close")}>閉じる</button>
 						</div>
 						<div class="settings-content">
 							<section class="settings-section">
@@ -3686,7 +3686,7 @@ function App() {
 									/>
 								</label>
 								<div class="settings-summary">上限を約20%超えた時に自動整理します。.quireignoreでHistory/index対象外を指定できます。</div>
-								<button disabled={!workspace() || historyBusy()} onClick={() => void pruneHistoryNow()}>今すぐ保持上限を適用</button>
+								<button disabled={!workspace() || historyBusy()} onClick={() => void invokeCommand("history.prune")}>今すぐ保持上限を適用</button>
 							</section>
 							<section class="settings-section">
 								<h3>Recent Workspaces</h3>
@@ -3705,7 +3705,7 @@ function App() {
 							<section class="settings-section">
 								<h3>マクロ</h3>
 								<div class="settings-summary">既存のコマンドIDを順番に実行します。失敗または無効なコマンドがあれば中断します。任意のスクリプトは実行しません。</div>
-								<button onClick={() => editMacro()}>マクロを追加</button>
+								<button onClick={() => void invokeCommand("macro.create")}>マクロを追加</button>
 								<div class="layout-preset-list">
 									<For each={macros()}>
 										{macro => (
@@ -3786,8 +3786,8 @@ function App() {
 								</label>
 								<div class="settings-summary">Explorer {Math.round(explorerWidth())}px / Editor {Math.round(editorRatio() * 100)}%</div>
 								<div class="layout-preset-actions">
-									<button onClick={saveLayoutPreset}>現在のlayoutを保存</button>
-									<button onClick={resetPaneLayout}>pane layoutを初期値へ戻す</button>
+									<button onClick={() => void invokeCommand("layout.preset.save")}>現在のlayoutを保存</button>
+									<button onClick={() => void invokeCommand("layout.reset")}>pane layoutを初期値へ戻す</button>
 								</div>
 								<Show when={layoutPresets().length > 0}>
 									<div class="layout-preset-list">
@@ -3838,8 +3838,8 @@ function App() {
 						<span>{snapshots().length} snapshots</span>
 						<span class="toolbar-spacer" />
 						<button disabled={historyBusy()} onClick={() => void createHistorySnapshot()}>Snapshot</button>
-						<button disabled={historyBusy()} onClick={() => void refreshHistory()}>更新</button>
-						<button onClick={() => setHistoryOpen(false)}>閉じる</button>
+						<button disabled={historyBusy()} onClick={() => void invokeCommand("history.refresh")}>更新</button>
+						<button onClick={() => void invokeCommand("history.close")}>閉じる</button>
 					</div>
 					<div class="history-list">
 						<Show when={!historyBusy()} fallback={<div class="history-empty">処理中...</div>}>
@@ -3919,10 +3919,10 @@ function App() {
 						<strong>Recent logs</strong>
 						<span>{logs().length} / 300</span>
 						<span class="toolbar-spacer" />
-						<button onClick={() => void refreshLogs()}>更新</button>
-						<button onClick={() => void copyLogFilePath()} title="永続ログのフルパスをコピー">ログファイル</button>
-						<button onClick={() => void clearLogs()} title="画面上のログだけを消去。ファイルは保持">表示をクリア</button>
-						<button onClick={() => setLogOpen(false)}>閉じる</button>
+						<button onClick={() => void invokeCommand("logs.refresh")}>更新</button>
+						<button onClick={() => void invokeCommand("logs.file.copy")} title="永続ログのフルパスをコピー">ログファイル</button>
+						<button onClick={() => void invokeCommand("logs.clear")} title="画面上のログだけを消去。ファイルは保持">表示をクリア</button>
+						<button onClick={() => void invokeCommand("logs.close")}>閉じる</button>
 					</div>
 					<div class="log-list">
 						<For each={logs()}>
