@@ -1687,11 +1687,15 @@ function App() {
 		listenFloating<string>("quire:pane-open-document", path => {
 			if(workspace()){ void openDocument(path); }
 		});
-		listenFloating<{ path: string; content: string }>("quire:pane-editor-change", payload => {
-			if(document()?.relativePath === payload.path){ setDraft(payload.content); }
+		listenFloating<{ workspaceRoot: string; path: string; content: string }>("quire:pane-editor-change", payload => {
+			if(workspace()?.root === payload.workspaceRoot && document()?.relativePath === payload.path){
+				setDraft(payload.content);
+			}
 		});
-		listenFloating<string>("quire:pane-editor-save", path => {
-			if(document()?.relativePath === path){ void saveDocument(); }
+		listenFloating<{ workspaceRoot: string; path: string }>("quire:pane-editor-save", payload => {
+			if(workspace()?.root === payload.workspaceRoot && document()?.relativePath === payload.path){
+				void saveDocument(true);
+			}
 		});
 		listenFloating<number>("quire:pane-editor-scroll", line => handleEditorViewportLine(line));
 		listenFloating<{ href: string; sourceDocument: string }>("quire:pane-preview-link", payload => {
@@ -2755,6 +2759,7 @@ function App() {
 
 	const floatingPaneState = (): FloatingPaneState => ({
 		workspaceName: workspace()?.name ?? null,
+		workspaceRoot: workspace()?.root ?? null,
 		documentPath: document()?.relativePath ?? null,
 		previewHtml: preview(),
 		graph: linkGraph(),
