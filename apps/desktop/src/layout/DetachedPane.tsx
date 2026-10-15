@@ -52,6 +52,35 @@ export default function DetachedPane() {
 		void emitTo("main", event, payload).catch(error => setMessage(String(error)));
 	};
 	const dock = () => { send("quire:pane-dock", { kind, label: windowLabel }); };
+	const onPreviewClick = (event: MouseEvent) => {
+		const target = event.target as HTMLElement;
+		const fold = target.closest<HTMLElement>("blockquote.callout[data-callout-fold] > .callout-title");
+		if(fold){
+			event.preventDefault();
+			fold.parentElement?.classList.toggle("callout-collapsed");
+			return;
+		}
+		const task = target.closest<HTMLInputElement>("input[data-quire-task-line]");
+		if(task){
+			event.preventDefault();
+			const line = Number.parseInt(task.dataset.quireTaskLine ?? "", 10);
+			if(!task.disabled && Number.isFinite(line)){
+				send("quire:pane-preview-task", { line, checked: task.checked, path: state()?.documentPath });
+			}
+			return;
+		}
+		const link = target.closest<HTMLAnchorElement>("a[href]");
+		if(!link){ return; }
+		event.preventDefault();
+		const href = link.getAttribute("href");
+		if(href && state()?.documentPath){
+			send("quire:pane-preview-link", {
+				href,
+				sourceDocument: link.dataset.quireSourceDocument || state()!.documentPath,
+			});
+		}
+	};
+
 	createEffect(() => {
 		const current = state();
 		if(kind !== "preview" || !current?.documentPath){ return; }
@@ -109,7 +138,7 @@ export default function DetachedPane() {
 				<div class="floating-pane-content floating-preview">
 					<Show when={state()?.documentPath} fallback={<div class="empty-pane">Documentを開いてください。</div>}>
 						<div class="preview-scroll" ref={previewElement}>
-							<article class="markdown-preview" innerHTML={state()?.previewHtml ?? ""} />
+							<article class="markdown-preview" innerHTML={state()?.previewHtml ?? ""} onClick={onPreviewClick} />
 						</div>
 					</Show>
 				</div>
