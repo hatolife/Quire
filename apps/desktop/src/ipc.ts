@@ -92,6 +92,7 @@ export type LayoutPreset = {
 	explorerMode: string;
 	rightPaneMode: string;
 	dockTree?: DockNode;
+	paneVisibility?: string[];
 };
 
 export type MacroDefinition = {
@@ -121,6 +122,7 @@ export type DesktopSettings = {
 	dockDirection: string;
 	dockTree: DockNode;
 	floatingPanes: string[];
+	paneVisibility: string[];
 	dailyNotesDirectory: string;
 	dailyNoteTemplate: string;
 	lastRightPane: string;
