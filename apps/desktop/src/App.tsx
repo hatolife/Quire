@@ -1680,7 +1680,7 @@ function App() {
 		};
 		listenFloating<{ kind: FloatingPaneKind; label: string }>("quire:pane-ready", payload => {
 			if(floatingPanels()[payload.kind] === payload.label){
-				void emitTo(payload.label, "quire:pane-state", floatingPaneState());
+				void emitTo(payload.label, "quire:pane-state", floatingPaneState(payload.kind));
 			}
 		});
 		listenFloating<{ kind: FloatingPaneKind; label: string }>("quire:pane-dock", payload => {
@@ -2781,14 +2781,14 @@ function App() {
 	};
 
 
-	const floatingPaneState = (): FloatingPaneState => ({
+	const floatingPaneState = (kind: FloatingPaneKind): FloatingPaneState => ({
 		workspaceName: workspace()?.name ?? null,
 		workspaceRoot: workspace()?.root ?? null,
 		documentPath: document()?.relativePath ?? null,
-		previewHtml: preview(),
-		graph: linkGraph(),
-		entries: entries(),
-		browserUrl: browserTargetUrl(),
+		previewHtml: kind === "preview" ? preview() : "",
+		graph: kind === "graph" ? linkGraph() : null,
+		entries: kind === "explorer" ? entries() : [],
+		browserUrl: kind === "browser" ? browserTargetUrl() : undefined,
 	});
 	const restoreFloatingPane = (kind: FloatingPaneKind, label: string) => {
 		if(floatingPanels()[kind] !== label){ return; }
@@ -2845,9 +2845,11 @@ function App() {
 			.catch(error => updateStatus("Floating window close handler: " + String(error), "error", "layout"));
 	};
 	createEffect(() => {
-		const data = floatingPaneState();
-		for(const label of Object.values(floatingPanels())){
-			if(label){ void emitTo(label, "quire:pane-state", data).catch(error => updateStatus("Pane sync error: " + String(error), "error", "layout")); }
+		for(const [kind, label] of Object.entries(floatingPanels()) as Array<[FloatingPaneKind, string | undefined]>){
+			if(label){
+				void emitTo(label, "quire:pane-state", floatingPaneState(kind))
+					.catch(error => updateStatus("Pane sync error: " + String(error), "error", "layout"));
+			}
 		}
 	});
 
