@@ -11,15 +11,26 @@ pub enum DockNode {
 }
 
 fn default_dock_tree() -> DockNode {
-	DockNode::Split {
+	use DockNode::{Pane, Split};
+	Split {
 		axis: "row".into(),
 		ratio: 0.23,
-		first: Box::new(DockNode::Pane { id: "explorer".into() }),
-		second: Box::new(DockNode::Split {
+		first: Box::new(Pane { id: "explorer".into() }),
+		second: Box::new(Split {
 			axis: "row".into(),
 			ratio: 0.5,
-			first: Box::new(DockNode::Pane { id: "editor".into() }),
-			second: Box::new(DockNode::Pane { id: "right".into() }),
+			first: Box::new(Pane { id: "editor".into() }),
+			second: Box::new(Split {
+				axis: "column".into(),
+				ratio: 0.65,
+				first: Box::new(Pane { id: "preview".into() }),
+				second: Box::new(Split {
+					axis: "column".into(),
+					ratio: 0.5,
+					first: Box::new(Pane { id: "browser".into() }),
+					second: Box::new(Pane { id: "graph".into() }),
+				}),
+			}),
 		}),
 	}
 }
@@ -36,6 +47,8 @@ pub struct LayoutPreset {
 	pub right_pane_mode: String,
 	#[serde(default)]
 	pub dock_tree: Option<DockNode>,
+	#[serde(default)]
+	pub pane_visibility: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -69,6 +82,7 @@ pub struct DesktopSettings {
 	pub dock_direction: String,
 	pub dock_tree: DockNode,
 	pub floating_panes: Vec<String>,
+	pub pane_visibility: Vec<String>,
 	pub daily_notes_directory: String,
 	pub daily_note_template: String,
 	pub last_right_pane: String,
@@ -98,6 +112,7 @@ impl Default for DesktopSettings {
 			dock_direction: "row".into(),
 			dock_tree: default_dock_tree(),
 			floating_panes: Vec::new(),
+			pane_visibility: vec!["preview".into()],
 			sidebar_commands: vec![
 				"workspace.quickOpen".into(),
 				"document.daily.open".into(),
