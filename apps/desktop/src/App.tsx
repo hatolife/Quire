@@ -1640,6 +1640,9 @@ function App() {
 			});
 
 		commandKeyHandler = (event: KeyboardEvent) => {
+			if(event.isComposing || event.key === "Process" || event.keyCode === 229){ return; }
+			const target = event.target;
+			if(target instanceof HTMLElement && target.closest(".neovim-editor-host")){ return; }
 			const key = event.key.toLowerCase();
 			let commandId: string | undefined;
 			if(event.altKey && !event.ctrlKey && !event.shiftKey){
@@ -2803,7 +2806,7 @@ function App() {
 			updateStatus("別ウィンドウの作成に失敗しました: " + String(event.payload), "error", "layout");
 		});
 		void floating.onCloseRequested(event => {
-			if(kind === "editor" && !approvedFloatingClose.has(label)){
+			if(kind === "editor" && document() && !approvedFloatingClose.has(label)){
 				event.preventDefault();
 				if(!saving()){
 					void saveDocument(true).then(saved => {
@@ -3067,6 +3070,7 @@ function App() {
 			id: "pane." + kind + ".detach",
 			title: kind + "を別ウィンドウで開く",
 			keywords: "float undock window detach",
+			enabled: kind === "editor" ? document() !== null : (workspace() !== null || kind === "browser"),
 			run: () => detachPane(kind),
 		} as AppCommand)),
 		{
