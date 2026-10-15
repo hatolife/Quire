@@ -1244,7 +1244,6 @@ function App() {
 		explorerMode: explorerMode(),
 		rightPaneMode: rightPaneMode(),
 		dockTree: dockTree(),
-		floatingPanes: Object.keys(floatingPanels()),
 	});
 
 	const saveLayoutPreset = () => {
@@ -1526,6 +1525,7 @@ function App() {
 		dockOrder: dockOrder(),
 		dockDirection: dockDirection(),
 		dockTree: dockTree(),
+		floatingPanes: Object.keys(floatingPanels()),
 		dailyNotesDirectory: dailyNotesDirectory(),
 		dailyNoteTemplate: dailyNoteTemplate(),
 		lastRightPane: rightPaneMode(),
