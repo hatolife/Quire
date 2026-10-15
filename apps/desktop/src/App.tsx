@@ -889,7 +889,7 @@ function App() {
 	const [dockOrder, setDockOrder] = createSignal<DockPanel[]>(["explorer", "editor", "right"]);
 	const [dockDirection, setDockDirection] = createSignal<"row" | "column">("row");
 	const [dockTree, setDockTree] = createSignal<DockNode>(defaultDockTree());
-	const [draggingDock, setDraggingDock] = createSignal<DockPanel | null>(null);
+	const [draggingDock, setDraggingDock] = createSignal<DockPanelId | null>(null);
 	const [dailyNotesDirectory, setDailyNotesDirectory] = createSignal("Daily");
 	const [dailyNoteTemplate, setDailyNoteTemplate] = createSignal("Templates/Daily.md");
 	const [templatePickerOpen, setTemplatePickerOpen] = createSignal(false);
