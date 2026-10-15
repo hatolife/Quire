@@ -436,7 +436,8 @@ pub fn start_document(
 		stop_process(&mut process);
 	}
 
-	let mut child = Command::new("nvim")
+	let mut launch = Command::new("nvim");
+	launch
 		.arg("--embed")
 		.arg("--clean")
 		.args(["--cmd", "set noswapfile"])
@@ -444,8 +445,16 @@ pub fn start_document(
 		.arg(&path)
 		.stdin(Stdio::piped())
 		.stdout(Stdio::piped())
-		.stderr(Stdio::piped())
-		.spawn()
+		.stderr(Stdio::piped());
+	#[cfg(windows)]
+	{
+		use std::os::windows::process::CommandExt;
+		// nvim.exe is a console application. The parent is a GUI subsystem
+		// process, so suppress the *child's* console window as well.
+		const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+		launch.creation_flags(CREATE_NO_WINDOW);
+	}
+	let mut child = launch.spawn()
 		.map_err(|error| {
 			let _ = logger.push(
 				"error".into(), "neovim".into(),
