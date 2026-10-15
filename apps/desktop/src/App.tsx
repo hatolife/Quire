@@ -2638,7 +2638,7 @@ function App() {
 		if(/^https?:\/\//i.test(href)){
 			event.preventDefault();
 			setBrowserTargetUrl(href);
-			setRightPaneMode("browser");
+			showSecondaryPane("browser");
 			updateStatus("Browserへ開きました: " + href, "info", "browser");
 			return;
 		}
@@ -2799,7 +2799,7 @@ function App() {
 		});
 		floatingHandles.delete(kind);
 		if(kind === "explorer"){ setExplorerVisible(true); }
-		else if(kind !== "editor"){ setRightPaneVisible(true); setRightPaneMode(kind); }
+		else if(kind !== "editor"){ showSecondaryPane(kind); }
 	};
 	const detachPane = async (kind: FloatingPaneKind) => {
 		if(kind === "editor" && dirty()){
@@ -3098,20 +3098,20 @@ function App() {
 			id: "pane.preview",
 			title: "Preview paneを表示",
 			keywords: "markdown preview pane",
-			run: () => setRightPaneMode("preview"),
+			run: () => showSecondaryPane("preview"),
 		},
 		{
 			id: "pane.graph",
 			title: "Graph paneを表示",
 			keywords: "graph links backlinks network",
 			enabled: workspace() !== null,
-			run: () => setRightPaneMode("graph"),
+			run: () => showSecondaryPane("graph"),
 		},
 		{
 			id: "pane.browser",
 			title: "Browser paneを表示",
 			keywords: "web browser pane",
-			run: () => setRightPaneMode("browser"),
+			run: () => showSecondaryPane("browser"),
 		},
 		{
 			id: "settings.show",
@@ -3668,6 +3668,16 @@ function App() {
 							</section>
 							<section class="settings-section">
 								<h3>Layout</h3>
+								<div class="settings-summary">Preview / Browser / Graphを個別に表示し、それぞれドッキングできます。</div>
+								<For each={["preview", "browser", "graph"] as SecondaryPanel[]}>
+									{kind => <label class="settings-toggle">
+										<input type="checkbox" checked={paneVisibility().includes(kind)} onChange={event => {
+											if(event.currentTarget.checked){ showSecondaryPane(kind); }
+											else{ hideSecondaryPane(kind); }
+										}} />
+										<span>{kind === "preview" ? "Preview" : kind === "browser" ? "Browser" : "Graph"}</span>
+									</label>}
+								</For>
 								<div class="layout-preset-actions">
 									<button classList={{ active: dockDirection() === "row" }} onClick={() => { setDockDirection("row"); setDockTree(root => setDockAxis(root, "row")); }}>左右に並べる</button>
 									<button classList={{ active: dockDirection() === "column" }} onClick={() => { setDockDirection("column"); setDockTree(root => setDockAxis(root, "column")); }}>上下に並べる</button>
