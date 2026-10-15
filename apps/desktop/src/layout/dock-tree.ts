@@ -1,4 +1,4 @@
-export type DockPanelId = "explorer" | "editor" | "right";
+export type DockPanelId = "explorer" | "editor" | "preview" | "browser" | "graph";
 export type DockAxis = "row" | "column";
 export type DockEdge = "left" | "right" | "top" | "bottom";
 export type DockNode =
@@ -6,17 +6,26 @@ export type DockNode =
 	| { type: "split"; axis: DockAxis; ratio: number; first: DockNode; second: DockNode };
 
 const pane = (id: DockPanelId): DockNode => ({ type: "pane", id });
+const secondaryDockPanels = (): DockNode => ({
+	type: "split", axis: "column", ratio: 0.65,
+	first: pane("preview"),
+	second: { type: "split", axis: "column", ratio: 0.5, first: pane("browser"), second: pane("graph") },
+});
 export const defaultDockTree = (): DockNode => ({
 	type: "split", axis: "row", ratio: 0.23, first: pane("explorer"),
-	second: { type: "split", axis: "row", ratio: 0.5, first: pane("editor"), second: pane("right") },
+	second: { type: "split", axis: "row", ratio: 0.5, first: pane("editor"), second: secondaryDockPanels() },
 });
 
 export function normalizeDockTree(value: unknown): DockNode {
 	const walk = (node: unknown): DockNode | null => {
 		if(!node || typeof node !== "object"){ return null; }
 		const record = node as Record<string, unknown>;
-		if(record.type === "pane" && (record.id === "explorer" || record.id === "editor" || record.id === "right")){
+		if(record.type === "pane" && (record.id === "explorer" || record.id === "editor" || record.id === "preview" || record.id === "browser" || record.id === "graph")){
 			return pane(record.id);
+		}
+		// Existing 3-pane layouts kept the three right tabs in one "right" pane.
+		if(record.type === "pane" && record.id === "right"){
+			return secondaryDockPanels();
 		}
 		if(record.type !== "split" || (record.axis !== "row" && record.axis !== "column")){ return null; }
 		const first = walk(record.first), second = walk(record.second);
@@ -32,7 +41,7 @@ export function normalizeDockTree(value: unknown): DockNode {
 		collect(node.first); collect(node.second);
 	};
 	collect(result);
-	return ids.length === 3 && new Set(ids).size === 3 ? result : defaultDockTree();
+	return ids.length === 5 && new Set(ids).size === 5 ? result : defaultDockTree();
 }
 
 export function filterDockTree(tree: DockNode, visible: ReadonlySet<DockPanelId>): DockNode | null {
