@@ -70,4 +70,5 @@ export function mountDockTree(
 	}
 	host.classList.add("dock-tree-enabled");
 	host.replaceChildren(root, hidden);
+	requestAnimationFrame(() => window.dispatchEvent(new Event("quire:layout-changed")));
 }
