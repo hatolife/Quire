@@ -7,7 +7,7 @@ export function mountDockTree(
 	onResize: (path: string, ratio: number) => void,
 ): void {
 	const panels = new Map<DockPanelId, HTMLElement>();
-	for(const id of ["explorer", "editor", "right"] as const){
+	for(const id of ["explorer", "editor", "preview", "browser", "graph"] as const){
 		const element = host.querySelector<HTMLElement>('[data-dock-panel="' + id + '"]');
 		if(!element){ return; }
 		panels.set(id, element);
@@ -64,7 +64,7 @@ export function mountDockTree(
 	root.appendChild(createNode(filtered));
 	const hidden = document.createElement("div");
 	hidden.className = "quire-dock-unused";
-	for(const id of ["explorer", "editor", "right"] as const){
+	for(const id of ["explorer", "editor", "preview", "browser", "graph"] as const){
 		const panel = panels.get(id);
 		if(panel && !visible.has(id)){ hidden.appendChild(panel); }
 	}
