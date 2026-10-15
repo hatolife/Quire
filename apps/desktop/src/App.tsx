@@ -1855,9 +1855,13 @@ function App() {
 		const root = dockTree();
 		const activeWorkspace = workspace();
 		const floating = floatingPanels();
-		const visible = new Set<DockPanel>(["editor"]);
+		const visible = new Set<DockPanelId>(["editor"]);
 		if(explorerVisible() && !floating.explorer){ visible.add("explorer"); }
-		if(rightPaneVisible()){ visible.add("right"); }
+		if(rightPaneVisible()){
+			for(const panel of paneVisibility()){
+				if(!floating[panel]){ visible.add(panel); }
+			}
+		}
 		if(dockMountFrame !== undefined){ cancelAnimationFrame(dockMountFrame); }
 		if(!activeWorkspace){ return; }
 		dockMountFrame = requestAnimationFrame(() => {
@@ -1867,6 +1871,15 @@ function App() {
 			}
 		});
 	});
+
+	const showSecondaryPane = (panel: SecondaryPanel) => {
+		setPaneVisibility(current => current.includes(panel) ? current : [...current, panel]);
+		setRightPaneMode(panel);
+		setRightPaneVisible(true);
+	};
+	const hideSecondaryPane = (panel: SecondaryPanel) => {
+		setPaneVisibility(current => current.filter(id => id !== panel));
+	};
 
 	const visibleDockPanels = () => dockOrder().filter(panel => panel !== "explorer" || (explorerVisible() && !floatingPanels().explorer)).filter(panel => panel !== "right" || rightPaneVisible());
 	const dockIndex = (panel: DockPanel) => visibleDockPanels().indexOf(panel);
@@ -1907,7 +1920,7 @@ function App() {
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", stop, { once: true });
 	};
-	const startDockMove = (event: PointerEvent, source: DockPanel) => {
+	const startDockMove = (event: PointerEvent, source: DockPanelId) => {
 		if(event.button !== 0){ return; }
 		event.preventDefault();
 		const handle = event.currentTarget as HTMLElement;
@@ -1927,9 +1940,9 @@ function App() {
 		const finish = (next: PointerEvent) => {
 			if(Math.hypot(next.clientX - startX, next.clientY - startY) <= 8){ cleanup(); return; }
 			const target = window.document.elementFromPoint(next.clientX, next.clientY)?.closest<HTMLElement>("[data-dock-panel]");
-			const destination = target?.dataset.dockPanel as DockPanel | undefined;
+			const destination = target?.dataset.dockPanel as DockPanelId | undefined;
 			cleanup();
-			if(!destination || destination === source || !dockOrder().includes(destination)){ return; }
+			if(!destination || destination === source || !(["explorer", "editor", "preview", "browser", "graph"] as string[]).includes(destination)){ return; }
 			const bounds = target!.getBoundingClientRect();
 			const x = (next.clientX - bounds.left) / Math.max(1, bounds.width);
 			const y = (next.clientY - bounds.top) / Math.max(1, bounds.height);
