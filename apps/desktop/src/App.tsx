@@ -1725,7 +1725,7 @@ function App() {
 
 		void getCurrentWindow().onCloseRequested(event => {
 			if(approvedMainClose){ return; }
-			if(floatingPanels().editor){
+			if(floatingPanels().editor && document()){
 				event.preventDefault();
 				if(!saving()){
 					void saveDocument(true).then(saved => {
@@ -1927,7 +1927,14 @@ function App() {
 			title: "Quire Workspaceを開く",
 		});
 		if(typeof selected !== "string"){ return; }
-		if(discardCurrent){
+		if(floatingPanels().editor && document()){
+			const saved = await saveDocument(true);
+			if(!saved){
+				updateStatus("別ウィンドウのEditorを保存できないためWorkspaceの変更を中断しました。", "warn", "workspace");
+				return;
+			}
+		}
+		if(discardCurrent && dirty()){
 			try{ await recoveryClear(); }catch(error){ updateStatus("Recovery clear error: " + String(error), "error", "recovery"); }
 		}
 		setRecoveryTrackingReady(false);
