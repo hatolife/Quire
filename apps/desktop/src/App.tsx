@@ -3388,35 +3388,16 @@ function App() {
 						aria-orientation={dockDirection() === "column" ? "horizontal" : "vertical"}
 						onPointerDown={event => beginDockResize(event as PointerEvent, 1)}
 					/>
-					<section data-dock-panel="right" style={{ order: String(dockIndex("right") * 2) }} class="preview-pane" classList={{ hidden: !rightPaneVisible() }}>
-						<div class="pane-title right-pane-title">
-							<span class="dock-grip" title="ドラッグでドッキング位置を変更" onPointerDown={event => startDockMove(event as PointerEvent, "right")}>⠿</span>
-							<button
-								class="pane-tab"
-								classList={{ active: rightPaneMode() === "preview" }}
-								onClick={() => void invokeCommand("pane.preview")}
-							>
-								Preview
-							</button>
-							<button
-								class="pane-tab"
-								classList={{ active: rightPaneMode() === "browser" }}
-								onClick={() => void invokeCommand("pane.browser")}
-							>
-								Browser
-							</button>
-							<button
-								class="pane-tab"
-								classList={{ active: rightPaneMode() === "graph" }}
-								onClick={() => void invokeCommand("pane.graph")}
-							>
-								Graph
-							</button>
+					<section data-dock-panel="preview" class="preview-pane" classList={{ hidden: !rightPaneVisible() || !paneVisibility().includes("preview") || Boolean(floatingPanels().preview) }}>
+						<div class="pane-title">
+							<span class="dock-grip" title="Previewをドラッグしてドッキング" onPointerDown={event => startDockMove(event as PointerEvent, "preview")}>⠿</span>
+							<strong>Preview</strong>
 							<span class="toolbar-spacer" />
-							<button class="pane-action" title="現在のペインを別ウィンドウに分離" onClick={() => detachPane(rightPaneMode())}>↗</button>
+							<button class="pane-action" title="別ウィンドウへ分離" onClick={() => void detachPane("preview")}>↗</button>
+							<button class="pane-action" title="Previewを閉じる" onClick={() => hideSecondaryPane("preview")}>×</button>
 						</div>
 						<div class="right-pane-content">
-							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "preview" }}>
+							<div class="right-pane-layer">
 								<Show
 									when={document()}
 									fallback={<div class="empty-pane">Preview</div>}
@@ -3443,19 +3424,41 @@ function App() {
 									</div>
 								</Show>
 							</div>
-							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "graph" }}>
-								<Show when={!floatingPanels().graph}><GraphPane
-									graph={linkGraph()}
-									currentPath={document()?.relativePath}
-									onOpen={path => openDocument(path)}
-								/></Show>
-							</div>
-							<div class="right-pane-layer" classList={{ hidden: rightPaneMode() !== "browser" }}>
-								<Show when={!floatingPanels().browser}><BrowserPane
-									active={rightPaneVisible() && rightPaneMode() === "browser" && !draggingDock() && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !templatePickerOpen() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
+						</div>
+					</section>
+					<section data-dock-panel="browser" class="preview-pane" classList={{ hidden: !rightPaneVisible() || !paneVisibility().includes("browser") || Boolean(floatingPanels().browser) }}>
+						<div class="pane-title">
+							<span class="dock-grip" title="Browserをドラッグしてドッキング" onPointerDown={event => startDockMove(event as PointerEvent, "browser")}>⠿</span>
+							<strong>Browser</strong>
+							<span class="toolbar-spacer" />
+							<button class="pane-action" title="別ウィンドウへ分離" onClick={() => void detachPane("browser")}>↗</button>
+							<button class="pane-action" title="Browserを閉じる" onClick={() => hideSecondaryPane("browser")}>×</button>
+						</div>
+						<div class="right-pane-content">
+							<div class="right-pane-layer">
+								<Show when={!floatingPanels().browser && paneVisibility().includes("browser")}><BrowserPane
+									active={rightPaneVisible() && paneVisibility().includes("browser") && !floatingPanels().browser && !draggingDock() && !historyOpen() && !commandPaletteOpen() && !quickOpenVisible() && !templatePickerOpen() && !settingsOpen() && !logOpen() && !recoveryDraft() && !draggingImageFiles()}
 									navigateTo={browserTargetUrl()}
 									onUrlChange={url => setBrowserTargetUrl(url)}
 									onStatus={message => updateStatus(message, message.toLowerCase().includes("error") ? "error" : "info", "browser")}
+								/></Show>
+							</div>
+						</div>
+					</section>
+					<section data-dock-panel="graph" class="preview-pane" classList={{ hidden: !rightPaneVisible() || !paneVisibility().includes("graph") || Boolean(floatingPanels().graph) }}>
+						<div class="pane-title">
+							<span class="dock-grip" title="Graphをドラッグしてドッキング" onPointerDown={event => startDockMove(event as PointerEvent, "graph")}>⠿</span>
+							<strong>Graph</strong>
+							<span class="toolbar-spacer" />
+							<button class="pane-action" title="別ウィンドウへ分離" onClick={() => void detachPane("graph")}>↗</button>
+							<button class="pane-action" title="Graphを閉じる" onClick={() => hideSecondaryPane("graph")}>×</button>
+						</div>
+						<div class="right-pane-content">
+							<div class="right-pane-layer">
+								<Show when={!floatingPanels().graph && paneVisibility().includes("graph")}><GraphPane
+									graph={linkGraph()}
+									currentPath={document()?.relativePath}
+									onOpen={path => openDocument(path)}
 								/></Show>
 							</div>
 						</div>
