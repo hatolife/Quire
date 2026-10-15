@@ -1694,6 +1694,15 @@ function App() {
 			if(document()?.relativePath === path){ void saveDocument(); }
 		});
 		listenFloating<number>("quire:pane-editor-scroll", line => handleEditorViewportLine(line));
+		listenFloating<{ href: string; sourceDocument: string }>("quire:pane-preview-link", payload => {
+			void openDetachedPreviewLink(payload.href, payload.sourceDocument);
+		});
+		listenFloating<{ path: string | null; line: number; checked: boolean }>("quire:pane-preview-task", payload => {
+			if(document()?.relativePath !== payload.path || !Number.isInteger(payload.line) || payload.line < 0){ return; }
+			void editorToggleTask(payload.line, payload.checked).catch(error =>
+				updateStatus("Detached Preview task error: " + String(error), "error", "editor"),
+			);
+		});
 		listenFloating<string>("quire:pane-browser-url", url => {
 			if(url.startsWith("https://") || url.startsWith("http://")){ setBrowserTargetUrl(url); }
 		});
@@ -2493,6 +2502,46 @@ function App() {
 		}catch(error){
 			setBacklinks([]);
 			updateStatus("Backlink error: " + String(error), "error", "links");
+		}
+	};
+
+	const openDetachedPreviewLink = async (href: string, sourceDocument: string) => {
+		if(!document() || !href){ return; }
+		try{
+			if(href.startsWith("quire-tag:")){
+				const tag = decodeURIComponent(href.slice("quire-tag:".length));
+				setSearchQuery("tag:" + tag);
+				setExplorerMode("tags");
+				setExplorerVisible(true);
+				explorerSearchInput?.focus();
+				return;
+			}
+			if(href.startsWith("quire-wiki:")){
+				const target = decodeURIComponent(href.slice("quire-wiki:".length));
+				const resolved = await documentResolveWikiLink(sourceDocument, target);
+				if(resolved){ await openDocument(resolved, undefined, linkFragment(target)); }
+				else{ updateStatus("未解決Wiki Link: " + target, "warn", "links"); }
+				return;
+			}
+			if(/^https?:\/\//i.test(href)){
+				setBrowserTargetUrl(href);
+				setRightPaneMode("browser");
+				setRightPaneVisible(true);
+				return;
+			}
+			if(href.startsWith("#")){
+				await openDocument(sourceDocument, undefined, href.slice(1));
+				return;
+			}
+			if(/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith("//")){
+				updateStatus("このリンク形式には対応していません: " + href, "warn", "links");
+				return;
+			}
+			const resolved = await documentResolveMarkdownLink(sourceDocument, href);
+			if(resolved){ await openDocument(resolved, undefined, linkFragment(href)); }
+			else{ updateStatus("Markdown Linkを解決できません: " + href, "warn", "links"); }
+		}catch(error){
+			updateStatus("Detached Preview link error: " + String(error), "error", "links");
 		}
 	};
 
