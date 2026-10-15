@@ -49,6 +49,8 @@ export default function BrowserPane(props: Props) {
 		await browser.setSize(new LogicalSize(Math.max(1, rect.width), Math.max(1, rect.height)));
 	};
 
+	const handleDockLayoutChanged = () => { void syncBounds(); };
+
 	const closeBrowser = async () => {
 		const current = browser;
 		browser = undefined;
@@ -184,12 +186,14 @@ export default function BrowserPane(props: Props) {
 	});
 
 	onMount(() => {
+		window.addEventListener("quire:layout-changed", handleDockLayoutChanged);
 		resizeObserver = new ResizeObserver(() => { void syncBounds(); });
 		resizeObserver.observe(slot);
 		void createBrowser(currentUrl());
 	});
 
 	onCleanup(() => {
+		window.removeEventListener("quire:layout-changed", handleDockLayoutChanged);
 		++generation;
 		resizeObserver?.disconnect();
 		if(urlPollTimer !== undefined){ window.clearInterval(urlPollTimer); }
